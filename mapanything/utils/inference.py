@@ -124,7 +124,7 @@ def loss_of_one_batch_multi_view(
 
     return result[ret] if ret else result
 
-
+# TODO: add new restriction，对于一个视角，如果它没有rgb的话，一定需要输入pose！depth不一定有，但一定要有pose（和最终的应用相匹配）
 def validate_input_views_for_inference(
     views: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
@@ -152,11 +152,11 @@ def validate_input_views_for_inference(
         # Check for invalid keys
         provided_keys = set(view.keys())
         invalid_keys = provided_keys - ALLOWED_VIEW_KEYS
-        if invalid_keys:
-            raise ValueError(
-                f"View {view_idx} contains invalid keys: {invalid_keys}. "
-                f"Allowed keys are: {sorted(ALLOWED_VIEW_KEYS)}"
-            )
+        # if invalid_keys:
+        #     raise ValueError(
+        #         f"View {view_idx} contains invalid keys: {invalid_keys}. "
+        #         f"Allowed keys are: {sorted(ALLOWED_VIEW_KEYS)}"
+        #     )
 
         # Check for missing required keys
         missing_keys = REQUIRED_KEYS - provided_keys
@@ -339,7 +339,7 @@ def postprocess_model_outputs_for_inference(
         processed_output = dict(raw_output)
 
         # 1. Add denormalized images
-        img = original_view["img"]  # Shape: (B, 3, H, W)
+        img = original_view["img"]  # Shape: (B, 3, H, W) # TODO: 判断一下模型的输出中有没有img，有的话就用预测的结果
         data_norm_type = original_view["data_norm_type"][0]
         img_hwc = rgb(img, data_norm_type)
 

@@ -141,7 +141,7 @@ def main():
     else:
         model_name = "facebook/map-anything"
         print("Loading CC-BY-NC 4.0 licensed MapAnything model...")
-    model = MapAnything.from_pretrained(model_name).to(device)
+    model = MapAnything.from_pretrained(model_name, local_files_only=True).to(device)
 
     # Load images
     print(f"Loading images from: {args.image_folder}")
@@ -226,7 +226,7 @@ def main():
         }
 
         # Convert to GLB scene
-        scene_3d = predictions_to_glb(predictions, as_mesh=True)
+        scene_3d = predictions_to_glb(predictions, as_mesh=False)
 
         # Save GLB file
         scene_3d.export(args.output_path)

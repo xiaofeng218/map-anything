@@ -96,7 +96,7 @@ python -m wai_processing.scripts.covisibility \
 python -m wai_processing.scripts.run_moge \
           root=<dataset_path>
 
-# Run mvsanywhere
+# Run mvsanywhere（only for dl3dv）
 python -m wai_processing.scripts.run_mvsanywhere \
           root=<dataset_path>
 

@@ -15,6 +15,7 @@ import time
 from datetime import datetime
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+os.environ["TORCH_HUB_DISABLE_AUTO_DOWNLOAD"] = "1"
 
 import cv2
 import gradio as gr
@@ -41,6 +42,7 @@ register_heif_opener()
 
 sys.path.append("mapanything/")
 
+os.environ["GRADIO_TEMP_DIR"] = "./gradio_tmp"
 
 def get_logo_base64():
     """Convert WAI logo to base64 for embedding in HTML"""
@@ -60,6 +62,7 @@ def get_logo_base64():
 high_level_config = {
     "path": "configs/train.yaml",
     "hf_model_name": "facebook/map-anything",
+    "local_files_only": True,
     "model_str": "mapanything",
     "config_overrides": [
         "machine=aws",
@@ -1582,4 +1585,4 @@ with gr.Blocks(theme=theme, css=GRADIO_CSS) as demo:
     # -------------------------------------------------------------------------
     gr.HTML(get_acknowledgements_html())
 
-    demo.queue(max_size=20).launch(show_error=True, share=True, ssr_mode=False)
+    demo.queue(max_size=20).launch(show_error=True, share=False, ssr_mode=False)

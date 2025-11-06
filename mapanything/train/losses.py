@@ -3808,7 +3808,7 @@ class FactoredGeometryScaleRegr3D(Criterion, MultiLoss):
 
         return losses, (details | {})
 
-
+# TODO add a rgb loss
 class FactoredGeometryScaleRegr3DPlusNormalGMLoss(FactoredGeometryScaleRegr3D):
     """
     Regression, Normals & Gradient Matching Loss for Factored Geometry & Scale.

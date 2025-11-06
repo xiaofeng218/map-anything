@@ -381,6 +381,7 @@ class MapAnything(nn.Module, PyTorchModelHubMixin):
             # Initialize Pose Head for all views if required
             if "pose" in self.pred_head_type:
                 self.pose_head = PoseHead(**pred_head_config["pose_head"])
+        # TODO: Add moge head "moge+pose","moge"
         else:
             raise ValueError(
                 f"Invalid pred_head_type: {self.pred_head_type}. Valid options: ['linear', 'dpt', 'dpt+pose']"
@@ -482,6 +483,7 @@ class MapAnything(nn.Module, PyTorchModelHubMixin):
                 **pred_head_config["pose_adaptor"]
             )
             self.scene_rep_type = "raydirs+depth+pose+confidence+mask"
+        # TODO: add pred_head_config["adaptor_type"] == "rgb+raydirs+depth+pose+confidence+mask"
         elif pred_head_config["adaptor_type"] == "campointmap+pose":
             assert self.pred_head_type == "dpt+pose", (
                 "Camera pointmap + pose can only be used as scene representation with dpt + pose head."
@@ -619,6 +621,7 @@ class MapAnything(nn.Module, PyTorchModelHubMixin):
                             filtered_ckpt[ckpt_key] = ckpt_value
                 print(self.load_state_dict(filtered_ckpt, strict=False))
 
+    # TODO: 随机去掉某些rgb的特征 // 随机生成一些连续的块来对原始图片进行mask，如果完全不存在这个图片的话，就直接将all_encoder_features_across_views设置成全零向量，同时修改数据中的 “non_ambiguous_mask”（如果存在的话，对于train的话就存在，对于inference就不存在）
     def _encode_n_views(self, views):
         """
         Encode all the input views (batch of images) in a single forward pass.
@@ -824,6 +827,7 @@ class MapAnything(nn.Module, PyTorchModelHubMixin):
 
         return all_encoder_features_across_views
 
+    # TODO: add random 连续的 mask for depth，和 sparse depth 放在一起
     def _encode_and_fuse_depths(
         self,
         views,
@@ -1130,6 +1134,7 @@ class MapAnything(nn.Module, PyTorchModelHubMixin):
 
         return all_encoder_features_across_views
 
+    # TODO: add rgb input to this fuction
     def _encode_and_fuse_optional_geometric_inputs(
         self, views, all_encoder_features_across_views_list
     ):
@@ -1330,6 +1335,7 @@ class MapAnything(nn.Module, PyTorchModelHubMixin):
                     output_shape_hw=img_shape,
                 )
             )
+        # TODO: add self.pred_head_type in ["moge", "moge+pose"]
         else:
             raise ValueError(
                 f"Invalid pred_head_type: {self.pred_head_type}. Valid options: ['linear', 'dpt', 'dpt+pose']"
@@ -1356,7 +1362,7 @@ class MapAnything(nn.Module, PyTorchModelHubMixin):
             # Obtain the batch size of the dense head inputs
             if self.pred_head_type == "linear":
                 batch_size = dense_head_inputs.shape[0]
-            elif self.pred_head_type in ["dpt", "dpt+pose"]:
+            elif self.pred_head_type in ["dpt", "dpt+pose"]: #TODO: add or in ["moge", "moge+pose"], the following fuction need modified too.
                 batch_size = dense_head_inputs[0].shape[0]
             else:
                 raise ValueError(
@@ -1475,7 +1481,7 @@ class MapAnything(nn.Module, PyTorchModelHubMixin):
         return dense_final_outputs, pose_final_outputs, scale_final_output
 
     def forward(self, views, memory_efficient_inference=False):
-        """
+        """ TODO: change this discription
         Forward pass performing the following operations:
         1. Encodes the N input views (images).
         2. Encodes the optional geometric inputs (ray directions, depths, camera rotations, camera translations).
@@ -1546,7 +1552,7 @@ class MapAnything(nn.Module, PyTorchModelHubMixin):
             dense_head_inputs = torch.cat(
                 final_info_sharing_multi_view_feat.features, dim=0
             )
-        elif self.pred_head_type in ["dpt", "dpt+pose"]:
+        elif self.pred_head_type in ["dpt", "dpt+pose"]: # TODO: add ["moge", "moge+pose"], 查看一下这个形式是否真的能和moge接口匹配上？
             # Get the list of features for all views
             dense_head_inputs_list = []
             if self.use_encoder_features_for_dpt:
@@ -1600,7 +1606,7 @@ class MapAnything(nn.Module, PyTorchModelHubMixin):
             # Prepare inputs for the downstream heads
             if self.pred_head_type == "linear":
                 dense_head_inputs = dense_head_inputs
-            elif self.pred_head_type in ["dpt", "dpt+pose"]:
+            elif self.pred_head_type in ["dpt", "dpt+pose"]: # TODO: add ["moge", "moge+pose"]
                 dense_head_inputs = dense_head_inputs_list
             scale_head_inputs = (
                 final_info_sharing_multi_view_feat.additional_token_features
@@ -1739,6 +1745,12 @@ class MapAnything(nn.Module, PyTorchModelHubMixin):
                             "metric_scaling_factor": scale_final_output,
                         }
                     )
+            # TODO:elif self.scene_rep_type in [
+                # "raydirs+depth+rgb+pose",
+                # "raydirs+depth+rgb+pose+confidence",
+                # "raydirs+depth+rgb+pose+mask",
+                # "raydirs+depth+rgb+pose+confidence+mask",
+            # ]:
             elif self.scene_rep_type in [
                 "campointmap+pose",
                 "campointmap+pose+confidence",

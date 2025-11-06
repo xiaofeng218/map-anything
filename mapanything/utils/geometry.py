@@ -1103,6 +1103,38 @@ def closed_form_pose_inverse(
     return inverted_matrix
 
 
+def extri_to_homo(extris):
+    """
+    Convert extrinsic matrix (3x4) to homogeneous matrix (4x4).
+    Supports both NumPy and PyTorch inputs.
+
+    Args:
+        extris: (..., 3, 4) or (..., 4, 4) tensor/array.
+
+    Returns:
+        (..., 4, 4) tensor/array of the same type as input.
+    """
+    # already homogeneous
+    if extris.shape[-2:] == (4, 4):
+        return extris
+
+    if isinstance(extris, torch.Tensor):
+        bottom = torch.tensor([0, 0, 0, 1],
+                              device=extris.device,
+                              dtype=extris.dtype).expand(*extris.shape[:-2], 1, 4)
+        extris_4x4 = torch.cat([extris, bottom], dim=-2)
+
+    elif isinstance(extris, np.ndarray):
+        bottom = np.tile(np.array([[0, 0, 0, 1]], dtype=extris.dtype),
+                         (*extris.shape[:-2], 1, 1))
+        extris_4x4 = np.concatenate([extris, bottom], axis=-2)
+
+    else:
+        raise TypeError(f"Unsupported input type: {type(extris)}")
+
+    return extris_4x4
+
+
 def relative_pose_transformation(trans_01, trans_02):
     r"""
     Function that computes the relative homogenous transformation from a
@@ -1229,64 +1261,98 @@ def depthmap_to_pts3d(depth, pseudo_focal, pp=None, **_):
 
 def depthmap_to_camera_coordinates(depthmap, camera_intrinsics, pseudo_focal=None):
     """
+    Vectorized version with automatic dimension consistency.
+
     Args:
-        - depthmap (HxW array):
-        - camera_intrinsics: a 3x3 matrix
+        depthmap: (B,H,W) or (H,W)
+        camera_intrinsics: (B,3,3) or (3,3)
+        pseudo_focal: (B,H,W) or (H,W) or None
+
     Returns:
-        pointmap of absolute coordinates (HxWx3 array), and a mask specifying valid pixels.
+        X_cam: same batch shape as input + (3)
+        valid_mask: same batch shape as input
     """
-    camera_intrinsics = np.float32(camera_intrinsics)
-    H, W = depthmap.shape
+    single_input = depthmap.ndim == 2  # record original shape
 
-    # Compute 3D ray associated with each pixel
-    # Strong assumption: there are no skew terms
-    assert camera_intrinsics[0, 1] == 0.0
-    assert camera_intrinsics[1, 0] == 0.0
-    if pseudo_focal is None:
-        fu = camera_intrinsics[0, 0]
-        fv = camera_intrinsics[1, 1]
-    else:
-        assert pseudo_focal.shape == (H, W)
-        fu = fv = pseudo_focal
-    cu = camera_intrinsics[0, 2]
-    cv = camera_intrinsics[1, 2]
+    # ---- unify batch dim ----
+    if single_input:
+        depthmap = depthmap[None, ...]
+    if camera_intrinsics.ndim == 2:
+        camera_intrinsics = camera_intrinsics[None, ...]
+    if pseudo_focal is not None and pseudo_focal.ndim == 2:
+        pseudo_focal = pseudo_focal[None, ...]
 
-    u, v = np.meshgrid(np.arange(W), np.arange(H))
-    z_cam = depthmap
-    x_cam = (u - cu) * z_cam / fu
-    y_cam = (v - cv) * z_cam / fv
-    X_cam = np.stack((x_cam, y_cam, z_cam), axis=-1).astype(np.float32)
+    B, H, W = depthmap.shape
+    K = np.float32(camera_intrinsics)
 
-    # Mask for valid coordinates
+    # ---- intrinsics ----
+    fu = K[:, 0, 0][:, None, None]
+    fv = K[:, 1, 1][:, None, None]
+    cu = K[:, 0, 2][:, None, None]
+    cv = K[:, 1, 2][:, None, None]
+    if pseudo_focal is not None:
+        fu = fv = pseudo_focal  # (B,H,W)
+
+    # ---- pixel grid ----
+    u, v = np.meshgrid(np.arange(W), np.arange(H), indexing="xy")
+    u = u[None, ...]
+    v = v[None, ...]
+
+    # ---- compute 3D points ----
+    z = depthmap
+    x = (u - cu) * z / fu
+    y = (v - cv) * z / fv
+    X_cam = np.stack((x, y, z), axis=-1).astype(np.float32)
     valid_mask = depthmap > 0.0
+
+    # ---- restore shape ----
+    if single_input:
+        X_cam = X_cam[0]        # (H,W,3)
+        valid_mask = valid_mask[0]  # (H,W)
 
     return X_cam, valid_mask
 
 
-def depthmap_to_absolute_camera_coordinates(
-    depthmap, camera_intrinsics, camera_pose, **kw
-):
+def depthmap_to_absolute_camera_coordinates(depthmap, camera_intrinsics, camera_pose, pseudo_focal=None):
     """
+    Vectorized version with automatic dimension consistency.
+
     Args:
-        - depthmap (HxW array):
-        - camera_intrinsics: a 3x3 matrix
-        - camera_pose: a 4x3 or 4x4 cam2world matrix
+        depthmap: (B,H,W) or (H,W)
+        camera_intrinsics: (B,3,3) or (3,3)
+        camera_pose: (B,4,4) or (4,4)
+        pseudo_focal: optional (B,H,W) or (H,W)
     Returns:
-        pointmap of absolute coordinates (HxWx3 array), and a mask specifying valid pixels.
+        X_world: same batch shape as input + (3)
+        valid_mask: same batch shape as input
     """
-    X_cam, valid_mask = depthmap_to_camera_coordinates(depthmap, camera_intrinsics)
+    single_input = depthmap.ndim == 2  # record original shape
 
-    X_world = X_cam  # default
-    if camera_pose is not None:
-        # R_cam2world = np.float32(camera_params["R_cam2world"])
-        # t_cam2world = np.float32(camera_params["t_cam2world"]).squeeze()
-        R_cam2world = camera_pose[:3, :3]
-        t_cam2world = camera_pose[:3, 3]
+    # ---- unify batch dim ----
+    if single_input:
+        depthmap = depthmap[None, ...]
+    if camera_intrinsics.ndim == 2:
+        camera_intrinsics = camera_intrinsics[None, ...]
+    if camera_pose.ndim == 2:
+        camera_pose = camera_pose[None, ...]
+    if pseudo_focal is not None and pseudo_focal.ndim == 2:
+        pseudo_focal = pseudo_focal[None, ...]
 
-        # Express in absolute coordinates (invalid depth values)
-        X_world = (
-            np.einsum("ik, vuk -> vui", R_cam2world, X_cam) + t_cam2world[None, None, :]
-        )
+    # ---- compute camera coordinates ----
+    X_cam, valid_mask = depthmap_to_camera_coordinates(depthmap, camera_intrinsics, pseudo_focal)
+    B, H, W, _ = X_cam.shape
+
+    # ---- extract pose ----
+    R = camera_pose[:, :3, :3].astype(np.float32)
+    t = camera_pose[:, :3, 3].astype(np.float32)
+
+    # ---- batch transform ----
+    X_world = np.einsum("bij,bhwj->bhwi", R, X_cam) + t[:, None, None, :]
+
+    # ---- restore shape ----
+    if single_input:
+        X_world = X_world[0]        # (H,W,3)
+        valid_mask = valid_mask[0]  # (H,W)
 
     return X_world, valid_mask
 

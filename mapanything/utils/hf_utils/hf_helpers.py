@@ -75,7 +75,7 @@ def initialize_mapanything_model(high_level_config, device):
     # Try using from_pretrained first
     try:
         print("Loading MapAnything model from_pretrained...")
-        model = MapAnything.from_pretrained(high_level_config["hf_model_name"]).to(
+        model = MapAnything.from_pretrained(high_level_config["hf_model_name"], local_files_only=high_level_config["local_files_only"]).to(
             device
         )
         print("Loading MapAnything model from_pretrained succeeded...")

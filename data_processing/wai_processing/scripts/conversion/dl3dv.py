@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 def get_original_scene_names(cfg):
     all_scene_names = []
     # hard-coding as DL3DV has exactly 11 splits from 1K to 11K
-    for split_idx in range(1, 12):
+    for split_idx in range(1, 2):
         data_split = f"{split_idx}K"
         split_root = Path(cfg.original_root, data_split)
         scene_names_one_split = sorted(

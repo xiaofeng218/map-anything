@@ -51,18 +51,18 @@ def main():
 
     categories = [
         "courtyard",
-        "delivery_area",
-        "electro",
-        "facade",
-        "kicker",
-        "meadow",
-        "office",
-        "pipes",
-        "playground",
-        "relief",
-        "relief_2",
-        "terrace",
-        "terrains",
+        # "delivery_area",
+        # "electro",
+        # "facade",
+        # "kicker",
+        # "meadow",
+        # "office",
+        # "pipes",
+        # "playground",
+        # "relief",
+        # "relief_2",
+        # "terrace",
+        # "terrains",
     ]
     # Additional available modalities: dslr_raw scan_raw scan_clean scan_eval dslr_occlusion
     datas = ["dslr_jpg", "dslr_undistorted", "dslr_depth"]
