@@ -7,21 +7,23 @@
 Utility functions for visualization
 """
 
+import threading
+import time
 from argparse import ArgumentParser, Namespace
 from distutils.util import strtobool
+from typing import List
 
 import numpy as np
 import rerun as rr
 import trimesh
-from tqdm.auto import tqdm
 import viser
 import viser.transforms as viser_tf
-import time
-import threading
-from typing import List
+from tqdm.auto import tqdm
 
+from mapanything.utils.geometry import (
+    depthmap_to_absolute_camera_coordinates,
+)
 from mapanything.utils.hf_utils.viz import image_mesh
-from mapanything.utils.geometry import depthmap_to_absolute_camera_coordinates, closed_form_pose_inverse
 
 
 def log_posed_rgbd_data_to_rerun(
@@ -298,14 +300,18 @@ def generate_ply_bytes(points, colors):
     colors_uint8 = safe_color_conversion(colors)
 
     # Pack data into binary format
-    data = np.empty(len(points), dtype=[
-        ("xyz", np.float32, 3),
-        ("rgb", np.uint8, 3),
-    ])
+    data = np.empty(
+        len(points),
+        dtype=[
+            ("xyz", np.float32, 3),
+            ("rgb", np.uint8, 3),
+        ],
+    )
     data["xyz"] = points
     data["rgb"] = colors_uint8
 
     return header + data.tobytes()
+
 
 def safe_color_conversion(colors):
     # If colors are in float format (normalized)
@@ -321,8 +327,7 @@ def safe_color_conversion(colors):
             # Unexpected range, try linear scaling
             colors_min, colors_max = colors.min(), colors.max()
             colors_uint8 = np.clip(
-                ((colors - colors_min) / (colors_max - colors_min)) * 255,
-                0, 255
+                ((colors - colors_min) / (colors_max - colors_min)) * 255, 0, 255
             ).astype(np.uint8)
     else:
         # Already in uint8 or similar integer format
@@ -380,13 +385,14 @@ def viser_wrapper(
     if not use_point_map:
         depth_map = pred_dict["depth"]  # (S, H, W)
         depth_conf = pred_dict["depth_conf"]  # (S, H, W)
-        world_points, valid_mask = depthmap_to_absolute_camera_coordinates(depth_map, intrinsics_cam, extrinsics_cam)
+        world_points, valid_mask = depthmap_to_absolute_camera_coordinates(
+            depth_map, intrinsics_cam, extrinsics_cam
+        )
         conf = depth_conf
     else:
         world_points = world_points_map
         conf = conf_map
         valid_mask = np.ones_like(colors[..., 0], dtype=bool)
-
 
     # Convert images from (S, 3, H, W) to (S, H, W, 3)
     # Then flatten everything for the point cloud
@@ -454,8 +460,7 @@ def viser_wrapper(
     )
 
     # @debug
-    #save_point_cloud_ply("generate_point_cloud.ply", points_centered, colors_flat)
-
+    # save_point_cloud_ply("generate_point_cloud.ply", points_centered, colors_flat)
 
     with server.gui.add_folder("Export Options", expand_by_default=False):
         button_download_ply = server.gui.add_button("Download PLY")
@@ -479,7 +484,9 @@ def viser_wrapper(
         frustums.clear()
 
         # Optionally attach a callback that sets the viewpoint to the chosen camera
-        def attach_callback(frustum: viser.CameraFrustumHandle, frame: viser.FrameHandle) -> None:
+        def attach_callback(
+            frustum: viser.CameraFrustumHandle, frame: viser.FrameHandle
+        ) -> None:
             @frustum.on_click
             def _(_) -> None:
                 for client in server.get_clients().values():
@@ -538,7 +545,9 @@ def viser_wrapper(
         current_percentage = gui_points_conf.value
         threshold_val = np.percentile(conf_flat, current_percentage)
 
-        print(f"Threshold absolute value: {threshold_val}, percentage: {current_percentage}%")
+        print(
+            f"Threshold absolute value: {threshold_val}, percentage: {current_percentage}%"
+        )
 
         conf_mask = (conf_flat >= threshold_val) & (conf_flat > 1e-5)
 

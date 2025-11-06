@@ -6,10 +6,11 @@ Usage:
 """
 
 import os
+
 os.environ["TORCH_HUB_DISABLE_AUTO_DOWNLOAD"] = "1"
 
-import json
 import torch
+
 from mapanything.utils.hf_utils.hf_helpers import initialize_mapanything_model
 
 # 避免 CUDA 内存碎片问题
@@ -35,6 +36,7 @@ high_level_config = {
     "patch_size": 14,
     "resolution": 518,
 }
+
 
 def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"

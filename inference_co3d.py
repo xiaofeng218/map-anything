@@ -1,25 +1,25 @@
-import sys
-import os
-
 import argparse
-import torch
-import torchvision
-import os.path as osp
 import gzip
 import json
 import logging
-from tqdm import tqdm
+import os
+import os.path as osp
+import sys
 
 import cv2
 import numpy as np
 import PIL.Image
+import torch
+import torchvision
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "models/sam2"))
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "models/sam2")
+)
 
-from mapanything.utils.viz import viser_wrapper
 from mapanything.models import MapAnything
+from mapanything.utils.geometry import closed_form_pose_inverse
 from mapanything.utils.image import preprocess_inputs
-from mapanything.utils.geometry import extri_to_homo, closed_form_pose_inverse
+from mapanything.utils.viz import viser_wrapper
 
 
 # inference of mapanything in co3d
@@ -31,6 +31,7 @@ def parse_args():
     parser.add_argument("--data_anno_dir", type=str, default="test_dataset/co3d_anno")
 
     return parser.parse_args()
+
 
 def save_video_frames_as_png(tensor: torch.Tensor, output_dir: str):
     """
@@ -55,6 +56,7 @@ def save_video_frames_as_png(tensor: torch.Tensor, output_dir: str):
         torchvision.utils.save_image(frame, filename)
 
     print(f"✅ Saved {tensor.shape[0]} frames to '{output_dir}'.")
+
 
 # co3d dataset
 def read_depth(path: str, scale_adjustment=1.0) -> np.ndarray:
@@ -92,6 +94,7 @@ def read_depth(path: str, scale_adjustment=1.0) -> np.ndarray:
 
     return d
 
+
 def load_16big_png_depth(depth_png: str) -> np.ndarray:
     """
     Loads a 16-bit PNG as a half-float depth map (H, W), returning a float32 NumPy array.
@@ -115,6 +118,7 @@ def load_16big_png_depth(depth_png: str) -> np.ndarray:
             .reshape((depth_pil.size[1], depth_pil.size[0]))
         )
     return depth
+
 
 def threshold_depth_map(
     depth_map: np.ndarray,
@@ -176,9 +180,7 @@ def get_data_from_co3d(co3d_dir, co3d_anno_dir, category, seq_name, ids):
     splits = ["train", "test"]
     metadata = None
     for split in splits:
-        annotation_file = osp.join(
-                        co3d_anno_dir, f"{category}_{split}.jgz"
-                    )
+        annotation_file = osp.join(co3d_anno_dir, f"{category}_{split}.jgz")
         try:
             with gzip.open(annotation_file, "r") as fin:
                 annotation = json.loads(fin.read())
@@ -206,38 +208,43 @@ def get_data_from_co3d(co3d_dir, co3d_anno_dir, category, seq_name, ids):
         depth_path = image_path.replace("/images", "/depths") + ".geometric.png"
         depth_map = read_depth(depth_path, 1.0)
 
-        depth_map = threshold_depth_map(
-            depth_map, min_percentile=-1, max_percentile=98
-        )
+        depth_map = threshold_depth_map(depth_map, min_percentile=-1, max_percentile=98)
 
         extri_opencv, intri_opencv = anno["extri"], anno["intri"]
 
         image = torch.from_numpy(image)
         intri_opencv = torch.tensor(intri_opencv)
-        extri_opencv = closed_form_pose_inverse(torch.tensor(extri_opencv)[None])[0] #c2w
+        extri_opencv = closed_form_pose_inverse(torch.tensor(extri_opencv)[None])[
+            0
+        ]  # c2w
         depth_map = torch.from_numpy(depth_map).float()
 
         view = {
-            "img": image, # (H, W, 3) - [0, 255]
-            "intrinsics": intri_opencv, # (3, 3)
-            "camera_poses": extri_opencv, # (4, 4) in OpenCV cam2world convention
-            "depth_z": depth_map, # (H, W)
-            "is_metric_scale": torch.tensor([False], device=image.device), # (1,)
+            "img": image,  # (H, W, 3) - [0, 255]
+            "intrinsics": intri_opencv,  # (3, 3)
+            "camera_poses": extri_opencv,  # (4, 4) in OpenCV cam2world convention
+            "depth_z": depth_map,  # (H, W)
+            "is_metric_scale": torch.tensor([False], device=image.device),  # (1,)
         }
         views.append(view)
 
     processed_views = preprocess_inputs(views)
     return processed_views
 
+
 if __name__ == "__main__":
     args = parse_args()
 
-    model = MapAnything.from_pretrained("facebook/map-anything", local_files_only=True).to('cuda')
+    model = MapAnything.from_pretrained(
+        "facebook/map-anything", local_files_only=True
+    ).to("cuda")
 
     ids = [1, 31, 42, 51, 71, 85, 93, 15]
-    processed_views = get_data_from_co3d(args.data_dir, args.data_anno_dir, args.category, args.seq_name, ids)
+    processed_views = get_data_from_co3d(
+        args.data_dir, args.data_anno_dir, args.category, args.seq_name, ids
+    )
 
-    exclude_infos = []#['depth_z', 'camera_poses', 'intrinsics', 'is_metric_scale']
+    exclude_infos = []  # ['depth_z', 'camera_poses', 'intrinsics', 'is_metric_scale']
 
     input_views = []
     for view in processed_views:
@@ -248,39 +255,44 @@ if __name__ == "__main__":
 
     # Run inference with any combination of inputs
     predictions = model.infer(input_views)
-    point_map = torch.stack([pred['pts3d'][0] for pred in predictions])
-    depth = torch.stack([pred['depth_z'][0] for pred in predictions])
-    mask = torch.stack([pred['mask'][0] for pred in predictions]).squeeze(-1)
-    pose = torch.stack([pred['camera_poses'][0] for pred in predictions])
-    conf = torch.stack([pred['conf'][0] for pred in predictions])
-    images = torch.stack([pred['img_no_norm'][0] for pred in predictions])
-    intr = torch.stack([pred['intrinsics'][0] for pred in predictions])
+    point_map = torch.stack([pred["pts3d"][0] for pred in predictions])
+    depth = torch.stack([pred["depth_z"][0] for pred in predictions])
+    mask = torch.stack([pred["mask"][0] for pred in predictions]).squeeze(-1)
+    pose = torch.stack([pred["camera_poses"][0] for pred in predictions])
+    conf = torch.stack([pred["conf"][0] for pred in predictions])
+    images = torch.stack([pred["img_no_norm"][0] for pred in predictions])
+    intr = torch.stack([pred["intrinsics"][0] for pred in predictions])
 
-
-    input_depth = torch.stack([view['depth_z'][0] for view in processed_views]).to('cuda')
-    input_mask = torch.stack([view['mask'][0] for view in predictions]).squeeze(-1)
-    input_conf = torch.stack([view['conf'][0] for view in predictions])
-    input_images = torch.stack([view['img_no_norm'][0] for view in predictions])
-    input_intr = torch.stack([view['intrinsics'][0] for view in processed_views]).to('cuda')
-    input_pose = torch.stack([view['camera_poses'][0] for view in processed_views]).to('cuda')
+    input_depth = torch.stack([view["depth_z"][0] for view in processed_views]).to(
+        "cuda"
+    )
+    input_mask = torch.stack([view["mask"][0] for view in predictions]).squeeze(-1)
+    input_conf = torch.stack([view["conf"][0] for view in predictions])
+    input_images = torch.stack([view["img_no_norm"][0] for view in predictions])
+    input_intr = torch.stack([view["intrinsics"][0] for view in processed_views]).to(
+        "cuda"
+    )
+    input_pose = torch.stack([view["camera_poses"][0] for view in processed_views]).to(
+        "cuda"
+    )
     first_pose_inv = closed_form_pose_inverse(input_pose[:1])  # [1, 4, 4]
     first_pose_inv = first_pose_inv.expand(input_pose.shape[0], -1, -1)  # [N, 4, 4]
-    input_pose = first_pose_inv @ input_pose # c2c0
-
+    input_pose = first_pose_inv @ input_pose  # c2c0
 
     preds = {
         "depth": torch.cat((depth.squeeze(-1), input_depth), dim=0),
         "images": torch.cat((images, input_images), dim=0),
         "depth_conf": torch.cat((conf, input_conf), dim=0),
-        "extrinsic": torch.cat((pose, input_pose), dim=0), # c2w
+        "extrinsic": torch.cat((pose, input_pose), dim=0),  # c2w
         "intrinsic": torch.cat((intr, input_intr), dim=0),
         "mask": torch.cat((mask, input_mask), dim=0),
     }
 
     for key in preds.keys():
         if isinstance(preds[key], torch.Tensor):
-            preds[key] = preds[key].cpu().numpy()  # remove batch dimension and convert to numpy
+            preds[key] = (
+                preds[key].cpu().numpy()
+            )  # remove batch dimension and convert to numpy
 
-    viser_server = viser_wrapper(preds)#, use_point_map=True)
+    viser_server = viser_wrapper(preds)  # , use_point_map=True)
     print("Visualization complete")
-

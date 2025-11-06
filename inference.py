@@ -1,31 +1,26 @@
-import sys
-import os
-
 import argparse
-import torch
-import torchvision
-import os.path as osp
-import gzip
-import json
-import logging
-from tqdm import tqdm
+import os
+import sys
 
 import cv2
 import numpy as np
-import PIL.Image
+import torch
+from tqdm import tqdm
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "models/sam2"))
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "models/sam2")
+)
 
-from mapanything.utils.viz import viser_wrapper
+from data_processing.viz_data import get_dataset_config
 from mapanything.models import MapAnything
-from mapanything.utils.image import preprocess_inputs
-from mapanything.utils.geometry import extri_to_homo, closed_form_pose_inverse
-from mapanything.utils.wai.core import load_data, load_frame
 from mapanything.utils.cropping import (
     rescale_image_and_other_optional_info,
     resize_with_nearest_interpolation_to_match_aspect_ratio,
 )
-from data_processing.viz_data import get_dataset_config
+from mapanything.utils.geometry import closed_form_pose_inverse
+from mapanything.utils.image import preprocess_inputs
+from mapanything.utils.viz import viser_wrapper
+from mapanything.utils.wai.core import load_data, load_frame
 
 
 # inference of mapanything in co3d
@@ -75,6 +70,7 @@ def get_parser():
     )
 
     return parser
+
 
 def get_data_from_wai(
     args,
@@ -159,16 +155,19 @@ def get_data_from_wai(
         pose = frame_data["extrinsics"].numpy()
 
         view = {
-            "img": torch.from_numpy(rgb_image), # (H, W, 3) - [0, 255]
-            "intrinsics": torch.from_numpy(intrinsics), # (3, 3)
-            "camera_poses": torch.from_numpy(pose), # (4, 4) in OpenCV cam2world convention
+            "img": torch.from_numpy(rgb_image),  # (H, W, 3) - [0, 255]
+            "intrinsics": torch.from_numpy(intrinsics),  # (3, 3)
+            "camera_poses": torch.from_numpy(
+                pose
+            ),  # (4, 4) in OpenCV cam2world convention
             "depth_z": torch.from_numpy(depth_data),
-            "is_metric_scale": torch.tensor([True]), # (1,)
+            "is_metric_scale": torch.tensor([True]),  # (1,)
         }
         views.append(view)
 
     processed_views = preprocess_inputs(views)
     return processed_views
+
 
 if __name__ == "__main__":
     parser = get_parser()
@@ -187,7 +186,9 @@ if __name__ == "__main__":
     if args.load_skymask:
         config["load_skymask"] = True
 
-    model = MapAnything.from_pretrained("facebook/map-anything", local_files_only=True).to('cuda')
+    model = MapAnything.from_pretrained(
+        "facebook/map-anything", local_files_only=True
+    ).to("cuda")
 
     ids = [1, 3, 5, 7, 9, 11, 13, 15, 17]
     processed_views = get_data_from_wai(
@@ -199,7 +200,7 @@ if __name__ == "__main__":
         confidence_thres=config["confidence_thres"],
     )
 
-    exclude_infos = []#,'camera_poses' 'depth_z', 'intrinsics', 'is_metric_scale']
+    exclude_infos = []  # ,'camera_poses' 'depth_z', 'intrinsics', 'is_metric_scale']
 
     input_views = []
     for view in processed_views:
@@ -210,39 +211,44 @@ if __name__ == "__main__":
 
     # Run inference with any combination of inputs
     predictions = model.infer(input_views)
-    point_map = torch.stack([pred['pts3d'][0] for pred in predictions])
-    depth = torch.stack([pred['depth_z'][0] for pred in predictions])
-    mask = torch.stack([pred['mask'][0] for pred in predictions]).squeeze(-1)
-    pose = torch.stack([pred['camera_poses'][0] for pred in predictions])
-    conf = torch.stack([pred['conf'][0] for pred in predictions])
-    images = torch.stack([pred['img_no_norm'][0] for pred in predictions])
-    intr = torch.stack([pred['intrinsics'][0] for pred in predictions])
+    point_map = torch.stack([pred["pts3d"][0] for pred in predictions])
+    depth = torch.stack([pred["depth_z"][0] for pred in predictions])
+    mask = torch.stack([pred["mask"][0] for pred in predictions]).squeeze(-1)
+    pose = torch.stack([pred["camera_poses"][0] for pred in predictions])
+    conf = torch.stack([pred["conf"][0] for pred in predictions])
+    images = torch.stack([pred["img_no_norm"][0] for pred in predictions])
+    intr = torch.stack([pred["intrinsics"][0] for pred in predictions])
 
-
-    input_depth = torch.stack([view['depth_z'][0] for view in processed_views]).to('cuda')
-    input_mask = torch.stack([view['mask'][0] for view in predictions]).squeeze(-1)
-    input_conf = torch.stack([view['conf'][0] for view in predictions])
-    input_images = torch.stack([view['img_no_norm'][0] for view in predictions])
-    input_intr = torch.stack([view['intrinsics'][0] for view in processed_views]).to('cuda')
-    input_pose = torch.stack([view['camera_poses'][0] for view in processed_views]).to('cuda')
+    input_depth = torch.stack([view["depth_z"][0] for view in processed_views]).to(
+        "cuda"
+    )
+    input_mask = torch.stack([view["mask"][0] for view in predictions]).squeeze(-1)
+    input_conf = torch.stack([view["conf"][0] for view in predictions])
+    input_images = torch.stack([view["img_no_norm"][0] for view in predictions])
+    input_intr = torch.stack([view["intrinsics"][0] for view in processed_views]).to(
+        "cuda"
+    )
+    input_pose = torch.stack([view["camera_poses"][0] for view in processed_views]).to(
+        "cuda"
+    )
     first_pose_inv = closed_form_pose_inverse(input_pose[:1])  # [1, 4, 4]
     first_pose_inv = first_pose_inv.expand(input_pose.shape[0], -1, -1)  # [N, 4, 4]
-    input_pose = first_pose_inv @ input_pose # c2c0
-
+    input_pose = first_pose_inv @ input_pose  # c2c0
 
     preds = {
         "depth": torch.cat((depth.squeeze(-1), input_depth), dim=0),
         "images": torch.cat((images, input_images), dim=0),
         "depth_conf": torch.cat((conf, input_conf), dim=0),
-        "extrinsic": torch.cat((pose, input_pose), dim=0), # c2w
+        "extrinsic": torch.cat((pose, input_pose), dim=0),  # c2w
         "intrinsic": torch.cat((intr, input_intr), dim=0),
         "mask": torch.cat((mask, input_mask), dim=0),
     }
 
     for key in preds.keys():
         if isinstance(preds[key], torch.Tensor):
-            preds[key] = preds[key].cpu().numpy()  # remove batch dimension and convert to numpy
+            preds[key] = (
+                preds[key].cpu().numpy()
+            )  # remove batch dimension and convert to numpy
 
-    viser_server = viser_wrapper(preds)#, use_point_map=True)
+    viser_server = viser_wrapper(preds)  # , use_point_map=True)
     print("Visualization complete")
-

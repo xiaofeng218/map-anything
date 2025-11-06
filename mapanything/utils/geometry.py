@@ -1119,14 +1119,15 @@ def extri_to_homo(extris):
         return extris
 
     if isinstance(extris, torch.Tensor):
-        bottom = torch.tensor([0, 0, 0, 1],
-                              device=extris.device,
-                              dtype=extris.dtype).expand(*extris.shape[:-2], 1, 4)
+        bottom = torch.tensor(
+            [0, 0, 0, 1], device=extris.device, dtype=extris.dtype
+        ).expand(*extris.shape[:-2], 1, 4)
         extris_4x4 = torch.cat([extris, bottom], dim=-2)
 
     elif isinstance(extris, np.ndarray):
-        bottom = np.tile(np.array([[0, 0, 0, 1]], dtype=extris.dtype),
-                         (*extris.shape[:-2], 1, 1))
+        bottom = np.tile(
+            np.array([[0, 0, 0, 1]], dtype=extris.dtype), (*extris.shape[:-2], 1, 1)
+        )
         extris_4x4 = np.concatenate([extris, bottom], axis=-2)
 
     else:
@@ -1307,13 +1308,15 @@ def depthmap_to_camera_coordinates(depthmap, camera_intrinsics, pseudo_focal=Non
 
     # ---- restore shape ----
     if single_input:
-        X_cam = X_cam[0]        # (H,W,3)
+        X_cam = X_cam[0]  # (H,W,3)
         valid_mask = valid_mask[0]  # (H,W)
 
     return X_cam, valid_mask
 
 
-def depthmap_to_absolute_camera_coordinates(depthmap, camera_intrinsics, camera_pose, pseudo_focal=None):
+def depthmap_to_absolute_camera_coordinates(
+    depthmap, camera_intrinsics, camera_pose, pseudo_focal=None
+):
     """
     Vectorized version with automatic dimension consistency.
 
@@ -1339,7 +1342,9 @@ def depthmap_to_absolute_camera_coordinates(depthmap, camera_intrinsics, camera_
         pseudo_focal = pseudo_focal[None, ...]
 
     # ---- compute camera coordinates ----
-    X_cam, valid_mask = depthmap_to_camera_coordinates(depthmap, camera_intrinsics, pseudo_focal)
+    X_cam, valid_mask = depthmap_to_camera_coordinates(
+        depthmap, camera_intrinsics, pseudo_focal
+    )
     B, H, W, _ = X_cam.shape
 
     # ---- extract pose ----
@@ -1351,7 +1356,7 @@ def depthmap_to_absolute_camera_coordinates(depthmap, camera_intrinsics, camera_
 
     # ---- restore shape ----
     if single_input:
-        X_world = X_world[0]        # (H,W,3)
+        X_world = X_world[0]  # (H,W,3)
         valid_mask = valid_mask[0]  # (H,W)
 
     return X_world, valid_mask

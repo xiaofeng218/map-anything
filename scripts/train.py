@@ -43,5 +43,6 @@ def execute_training(cfg: DictConfig):
     # Run the training
     train(cfg)
 
+
 if __name__ == "__main__":
     execute_training()

@@ -1,6 +1,8 @@
-import cv2
 import os
+
+import cv2
 import numpy as np
+
 
 def sample_frames(video_path, output_dir, num_frames=10):
     # 创建保存帧的文件夹
@@ -17,7 +19,7 @@ def sample_frames(video_path, output_dir, num_frames=10):
     print(f"视频总帧数: {total_frames}")
 
     # 计算均匀采样的帧索引
-    frame_indices = np.linspace(0, total_frames-1, num_frames, dtype=int)
+    frame_indices = np.linspace(0, total_frames - 1, num_frames, dtype=int)
     print(f"采样帧索引: {frame_indices}")
 
     for idx in frame_indices:
@@ -33,7 +35,8 @@ def sample_frames(video_path, output_dir, num_frames=10):
     cap.release()
     print("采样完成！")
 
+
 # 使用示例
-video_path = "ego_teaser_trim.mp4"       # 视频路径
-output_dir = "sampled_frames"          # 保存帧的文件夹
+video_path = "ego_teaser_trim.mp4"  # 视频路径
+output_dir = "sampled_frames"  # 保存帧的文件夹
 sample_frames(video_path, output_dir, num_frames=15)

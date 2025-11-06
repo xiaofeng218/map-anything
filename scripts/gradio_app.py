@@ -44,6 +44,7 @@ sys.path.append("mapanything/")
 
 os.environ["GRADIO_TEMP_DIR"] = "./gradio_tmp"
 
+
 def get_logo_base64():
     """Convert WAI logo to base64 for embedding in HTML"""
     import base64
