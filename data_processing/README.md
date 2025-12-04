@@ -61,7 +61,7 @@ mkdir -p third_party/mvsanywhere/checkpoints && cd third_party/mvsanywhere/check
 pip install -e .[mvsanywhere] # install with mvsanywhere support
 ```
 
-MVSAnywhere stage is only needed for datasets without ground truth depth maps, i.e., only DL3DV-10K in our case.
+MVSAnywhere stage is onlneeded for datasets without ground truth depth maps, i.e., only DL3DV-10K in our case.
 
 ## Running WAI Processing:
 

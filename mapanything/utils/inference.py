@@ -38,7 +38,7 @@ ALLOWED_VIEW_KEYS = {
     "instance",  # Optional - instance info of the view
 }
 
-REQUIRED_KEYS = {"img", "data_norm_type"}
+REQUIRED_KEYS = {"data_norm_type"}#"img"}
 
 # Define conflicting keys that cannot be used together
 CONFLICTING_KEYS = [
@@ -79,7 +79,7 @@ def loss_of_one_batch_multi_view(
     if ignore_keys is None:
         ignore_keys = set(
             [
-                "depthmap",
+                # "depthmap",
                 "dataset",
                 "label",
                 "instance",
@@ -126,6 +126,7 @@ def loss_of_one_batch_multi_view(
 
 
 # TODO: add new restriction，对于一个视角，如果它没有rgb的话，一定需要输入pose！depth不一定有，但一定要有pose（和最终的应用相匹配）
+#       同时第1一个视角一定要有rgb，因为它是参考视角，没有rgb的话，就没有参考视角了
 def validate_input_views_for_inference(
     views: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
@@ -171,6 +172,24 @@ def validate_input_views_for_inference(
                 raise ValueError(
                     f"View {view_idx} contains conflicting keys: {present_conflicts}. "
                     f"Only one of {conflict_set} can be provided at a time."
+                )
+
+        if view_idx == 0 and 'img' not in provided_keys:
+            raise ValueError(
+                f"The First View missing required keys: img"
+            )
+
+        if 'img' not in provided_keys:
+            if (
+                "intrinsics" not in provided_keys
+                and "ray_directions" not in provided_keys
+            ):
+                raise ValueError(
+                    f"View {view_idx} without image must provide intrinsics or ray_directions"
+                )
+            if "camera_poses" not in provided_keys:
+                raise ValueError(
+                    f"View {view_idx} without image must provide camera_poses"
                 )
 
         # Check depth constraint: If depth is provided, intrinsics or ray_directions must also be provided
@@ -340,9 +359,13 @@ def postprocess_model_outputs_for_inference(
         processed_output = dict(raw_output)
 
         # 1. Add denormalized images
-        img = original_view[
-            "img"
-        ]  # Shape: (B, 3, H, W) # TODO: 判断一下模型的输出中有没有img，有的话就用预测的结果
+        # TODO: 判断一下模型的输出中有没有img，有的话就用预测的结果
+        if 'img' in processed_output:
+            img = processed_output['img']
+        else:
+            img = original_view[
+                "img"
+            ]  # Shape: (B, 3, H, W)
         data_norm_type = original_view["data_norm_type"][0]
         img_hwc = rgb(img, data_norm_type)
 

@@ -32,6 +32,7 @@ from mapanything.models import init_model
 from mapanything.train.losses import *  # noqa
 from mapanything.utils.inference import loss_of_one_batch_multi_view
 from mapanything.utils.train_tools import NativeScalerWithGradNormCount as NativeScaler
+from mapanything.utils.viz import save_views_as_image
 
 # Enable TF32 precision if supported (for GPU >= Ampere and PyTorch >= 1.12)
 if hasattr(torch.backends.cuda, "matmul") and hasattr(
@@ -83,7 +84,7 @@ def train(args):
         dataset=args.dataset.train_dataset,
         num_workers=args.dataset.num_workers,
         test=False,
-        max_num_of_imgs_per_gpu=args.train_params.max_num_of_imgs_per_gpu,
+        max_num_of_imgs_per_gpu=4,
     )
     print("Building test dataset {:s}".format(args.dataset.test_dataset))
     test_batch_size = 2 * (
@@ -461,16 +462,16 @@ def train_one_epoch(
                 args.train_params.submodule_configs,
             )
 
-        loss_tuple = loss_of_one_batch_multi_view(
+        result = loss_of_one_batch_multi_view(
             batch,
             model,
             criterion,
             device,
             use_amp=bool(args.train_params.amp),
             amp_dtype=args.train_params.amp_dtype,
-            ret="loss",
+            # ret="loss",
         )
-        loss, loss_details = loss_tuple  # criterion returns two values
+        loss, loss_details = result["loss"]  # criterion returns two values
         if n_views > 2:
             loss = loss * (
                 2 / n_views
@@ -548,7 +549,7 @@ def train_one_epoch(
             We use epoch_1000x as the x-axis in tensorboard.
             This calibrates different curves when batch size changes.
             """
-            epoch_1000x = int(epoch_f * 1000)
+            epoch_1000x = int(epoch_f * 1)#* 1000) # TODO: change it when true_train
             log_writer.add_scalar("train_loss", loss_value_reduce, epoch_1000x)
             if gradient_norm is not None:
                 log_writer.add_scalar("train_grad_norm", gradient_norm, epoch_1000x)
@@ -565,6 +566,14 @@ def train_one_epoch(
             log_writer.add_scalar("train_iter", epoch_1000x, epoch_1000x)
             for name, val in loss_details.items():
                 log_writer.add_scalar("train_" + name, val, epoch_1000x)
+
+            save_views_as_image([result[f"view{i + 1}"]["img"] for i in range(len(batch))], "image", os.path.join(args.output_dir, "images", f"input_image_{epoch_1000x}.png"))
+            save_views_as_image([result[f"pred{i + 1}"]["img"] for i in range(len(batch))], "image", os.path.join(args.output_dir, "images", f"pred_image_{epoch_1000x}.png"))
+            save_views_as_image([result[f"view{i + 1}"]["non_ambiguous_mask"] for i in range(len(batch))], "mask", os.path.join(args.output_dir, "images", f"input_mask_{epoch_1000x}.png"))
+            save_views_as_image([result[f"pred{i + 1}"]["non_ambiguous_mask"] for i in range(len(batch))], "mask", os.path.join(args.output_dir, "images", f"input_mask_{epoch_1000x}.png"))
+
+        del result
+
 
     # # Gather the stats from all processes
     # metric_logger.synchronize_between_processes()

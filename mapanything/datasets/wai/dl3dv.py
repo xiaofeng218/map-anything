@@ -94,7 +94,8 @@ class DL3DVWAI(BaseDataset):
         num_views_in_scene = len(scene_file_names)
 
         # Load the scene pairwise covisibility mmap
-        covisibility_version_key = "v0_mvsa_based"
+        # covisibility_version_key = "v0_mvsa_based" # change
+        covisibility_version_key = "v0"
         covisibility_map_dir = os.path.join(
             scene_root, "covisibility", covisibility_version_key
         )

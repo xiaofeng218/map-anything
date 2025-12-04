@@ -137,7 +137,8 @@ def compute_covisibility(cfg, scene_name: str, overwrite=False):
         pairwise_covisibility[idx] = overlap_score
 
         # Free memory
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     mmap_store_name = store_data(
         scene_root / cfg.out_path / "pairwise_covisibility.npy",
@@ -177,7 +178,10 @@ if __name__ == "__main__":
     if overwrite:
         logger.warning("Careful: Overwrite enabled!")
 
-    device = cfg.get("device", "cuda")
+    if torch.cuda.is_available():
+        device = cfg.get("device", "cuda")
+    else:
+        device = "cpu"
     scene_names = get_scene_names(
         cfg, shuffle=cfg.get("random_scene_processing_order", True)
     )

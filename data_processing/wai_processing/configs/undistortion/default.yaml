@@ -14,4 +14,4 @@ store_as_jpg: True # store as jpeg to save storage
 random_scene_processing_order: true
 
 batch_size: 4
-num_workers: 4
+num_workers: 8

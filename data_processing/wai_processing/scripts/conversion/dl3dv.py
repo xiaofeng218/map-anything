@@ -38,21 +38,22 @@ def get_original_scene_names(cfg):
 
 
 def convert_scene(cfg, scene_name) -> None | tuple[str, str]:
+    import cv2
+    logger.info(f"Processing: {scene_name}")
+
     # scene_name is f"{split_name}_{scene_id}"
     dataset_name = cfg.get("dataset_name", "dl3dv")
     version = cfg.get("version", "0.1")
     source_scene_root = Path(cfg.original_root, scene_name.replace("_", "/"))
-    if any(
-        [
-            not Path(source_scene_root, "transforms.json").exists(),
-            not Path(source_scene_root, "colmap").exists(),
-            not Path(source_scene_root, "images").exists(),
-        ]
-    ):
-        raise RuntimeError(
-            f"Expected 'transforms.json', 'images', and 'colmap' to exist in {source_scene_root}"
-        )
-    logger.info(f"Processing: {scene_name}")
+
+    # Sanity check
+    if any([
+        not Path(source_scene_root, "transforms.json").exists(),
+        not Path(source_scene_root, "colmap").exists(),
+        not Path(source_scene_root, "images").exists(),
+    ]):
+        raise RuntimeError(f"Expected required files missing in {source_scene_root}")
+
     transforms_fn = Path(source_scene_root, "transforms.json")
     out_path = Path(cfg.root) / scene_name
     meta = load_data(transforms_fn)
@@ -60,36 +61,61 @@ def convert_scene(cfg, scene_name) -> None | tuple[str, str]:
 
     # skip portrait images for now
     if meta["h"] > meta["w"]:
-        # return state, error_message
         return "data_issue", "Images are in portrait, not supported for now."
 
+    # ✅ Detect actual image resolution from first frame image
+    test_img = cv2.imread(str(Path(source_scene_root, frames[0]["file_path"])))
+    real_h, real_w = test_img.shape[:2]
+
+    # ✅ Extract original intrinsics and scale
+    orig_fx = meta["fl_x"]
+    orig_fy = meta["fl_y"]
+    orig_cx = meta["cx"]
+    orig_cy = meta["cy"]
+    orig_w = meta["w"]
+    orig_h = meta["h"]
+
+    scale_x = real_w / orig_w
+    scale_y = real_h / orig_h
+
+    new_fx = orig_fx * scale_x
+    new_fy = orig_fy * scale_y
+    new_cx = orig_cx * scale_x
+    new_cy = orig_cy * scale_y
+
+    # ✅ Create target folder
     image_out_path = out_path / "images_distorted"
-    os.makedirs(image_out_path)
+    os.makedirs(image_out_path, exist_ok=True)
+
     wai_frames = []
     for frame in frames:
         frame_name = Path(frame["file_path"]).stem
         wai_frame = {"frame_name": frame_name}
+
         org_transform_matrix = np.array(frame["transform_matrix"]).astype(np.float32)
         opencv_pose, gl2cv_cmat = gl2cv(org_transform_matrix, return_cmat=True)
-        # link distorted images
+
         source_image_path = Path(source_scene_root, frame["file_path"])
         target_image_path = f"images_distorted/{frame_name}.png"
-        os.symlink(source_image_path, out_path / target_image_path)
+
+        # ✅ syslink distorted image files
+        if not (out_path / target_image_path).exists():
+            os.symlink(source_image_path, out_path / target_image_path)
+
         wai_frame["image_distorted"] = target_image_path
         wai_frame["file_path"] = target_image_path
         wai_frame["transform_matrix"] = opencv_pose.tolist()
-        other_keys = ["colmap_im_id"]
 
-        for other_key in other_keys:
-            if other_key in frame:
-                wai_frame[other_key] = frame[other_key]
+        if "colmap_im_id" in frame:
+            wai_frame["colmap_im_id"] = frame["colmap_im_id"]
+
         wai_frames.append(wai_frame)
 
-    # link colmap cache
-    os.symlink(Path(source_scene_root, "colmap"), out_path / "colmap")
-    # atm no native support for colmap as a format - we can this later if needed
-    scene_modalities = {"colmap": {"scene_key": "colmap"}}
+    # ✅ Link colmap data
+    if not (out_path / "colmap").exists():
+        os.symlink(Path(source_scene_root, "colmap"), out_path / "colmap")
 
+    # ✅ Build final scene_meta with updated intrinsics and size
     scene_meta = {
         "scene_name": scene_name,
         "dataset_name": dataset_name,
@@ -98,27 +124,41 @@ def convert_scene(cfg, scene_name) -> None | tuple[str, str]:
         "camera_model": meta["camera_model"],
         "camera_convention": "opencv",
         "scale_type": "colmap",
+
+        # ✅ Updated intrinsics
+        "fl_x": new_fx,
+        "fl_y": new_fy,
+        "cx": new_cx,
+        "cy": new_cy,
+        "w": real_w,
+        "h": real_h,
+
+        # ✅ Distortion params MUST remain tied to intrinsics
+        "k1": meta.get("k1", 0.0),
+        "k2": meta.get("k2", 0.0),
+        "p1": meta.get("p1", 0.0),
+        "p2": meta.get("p2", 0.0),
+        "k3": meta.get("k3", 0.0),
     }
-    # dl3dv applied an additional transform on the colmap poses
-    # store it to retrieve the original colmap poses
-    for camera_key in CAMERA_KEYS:
-        if camera_key in meta:
-            scene_meta[camera_key] = meta[camera_key]
+
     scene_meta["frames"] = wai_frames
     scene_meta["frame_modalities"] = {
         "image_distorted": {"frame_key": "image_distorted", "format": "image"},
     }
-    scene_meta["scene_modalities"] = scene_modalities
+    scene_meta["scene_modalities"] = {
+        "colmap": {"scene_key": "colmap"}
+    }
+
+    # ✅ store transforms for pose correction
     applied_transform = np.array(meta["applied_transform"]).reshape(3, 4)
-    applied_transform = np.concatenate([applied_transform, np.array([[0, 0, 0, 1.0]])])
-    scene_meta["_applied_transform"] = (
-        applied_transform.tolist()
-    )  # transform from colmap poses to opencv poses
+    applied_transform = np.vstack([applied_transform, [0, 0, 0, 1.0]])
+    scene_meta["_applied_transform"] = applied_transform.tolist()
     scene_meta["_applied_transforms"] = {
         "opengl2opencv": gl2cv_cmat.tolist()
-    }  # transforms raw poses to opencv poses
-    store_data(out_path / "scene_meta_distorted.json", scene_meta, "scene_meta")
+    }
 
+    # ✅ Save final metadata
+    store_data(out_path / "scene_meta_distorted.json", scene_meta, "scene_meta")
 
 if __name__ == "__main__":
     cfg = argconf_parse(WAI_PROC_CONFIG_PATH / "conversion/dl3dv.yaml")

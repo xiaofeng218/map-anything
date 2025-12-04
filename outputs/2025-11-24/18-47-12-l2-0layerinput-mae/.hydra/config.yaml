@@ -1,0 +1,944 @@
+machine:
+  root_data_dir: /fsx/xrtech/data
+  mapanything_dataset_metadata_dir: /fsx/nkeetha/mapanything_dataset_metadata
+  root_pretrained_checkpoints_dir: /fsx/nkeetha/mapanything_checkpoints
+  root_experiments_dir: /fsx/nkeetha/experiments
+  root_uniception_pretrained_checkpoints_dir: /fsx/nkeetha/uniception_checkpoints
+  external_benchmark_data_root_data_dir: /fsx/xrtech/external_benchmark_data/rmvd_mvs_benchmark/rmvd_test_data
+model:
+  model_str: mapanything
+  model_config:
+    pretrained_checkpoint_path: null
+    load_specific_pretrained_submodules: false
+    specific_pretrained_submodules: []
+    name: mapanything
+    encoder_config: ${model.encoder}
+    info_sharing_config: ${model.info_sharing}
+    pred_head_config: ${model.pred_head}
+    geometric_input_config: ${model.task}
+  pretrained: /root/map-anything/checkpoint/model.pth
+  data_norm_type: ${model.encoder.data_norm_type}
+  torch_hub_force_reload: false
+  encoder:
+    encoder_str: dinov2_feature_returner
+    name: dinov2_large
+    data_norm_type: dinov2
+    size: large
+    indices:
+    - 0
+    - 23
+    with_registers: false
+    uses_torch_hub: true
+    gradient_checkpointing: false
+  info_sharing:
+    model_type: alternating_attention
+    model_return_type: intermediate_features
+    custom_positional_encoding: null
+    module_args:
+      name: aat_24_layers_ifr
+      indices:
+      - 11
+      - 17
+      norm_intermediate: true
+      size: 24_layers
+      depth: 24
+      distinguish_ref_and_non_ref_views: true
+      gradient_checkpointing: false
+  pred_head:
+    adaptor_config:
+      input_dim: 9
+      scene_rep_dim: 4
+      type: raydirs+depth+rgb+pose+confidence+mask
+      scene_rep_type: raydirs+depth+rgb+pose
+      dense_pred_init_dict:
+        name: raydirs+depth+rgb+pose+confidence+mask+scale
+        ray_directions_mode: linear
+        ray_directions_normalize_to_unit_sphere: true
+        ray_directions_normalize_to_unit_image_plane: false
+        ray_directions_vmin: ${special_float:"-inf"}
+        ray_directions_vmax: ${special_float:"inf"}
+        ray_directions_clamp_min_of_z_dir: false
+        ray_directions_z_dir_min: ${special_float:"-inf"}
+        depth_mode: exp
+        depth_vmin: 0
+        depth_vmax: ${special_float:"inf"}
+        confidence_type: exp
+        confidence_vmin: 1
+        confidence_vmax: ${special_float:"inf"}
+      pose_pred_init_dict:
+        name: raydirs+depth+pose+confidence+mask+scale
+        cam_trans_mode: linear
+        cam_trans_vmin: ${special_float:"-inf"}
+        cam_trans_vmax: ${special_float:"inf"}
+        quaternions_mode: linear
+        quaternions_normalize: true
+        quaternions_vmin: ${special_float:"-inf"}
+        quaternions_vmax: ${special_float:"inf"}
+      scale_pred_init_dict:
+        name: raydirs+depth+rgb+pose+confidence+mask+scale
+        mode: exp
+        vmin: 1.0e-08
+        vmax: ${special_float:"inf"}
+    type: mae+pose
+    feature_head:
+      num_features: 1
+      patch_size: 14
+      num_channels: ${model.pred_head.adaptor_config.input_dim}
+    pose_head:
+      num_resconv_block: 2
+      rot_representation_dim: 4
+    scale_head:
+      output_dim: 1
+    adaptor_type: ${model.pred_head.adaptor_config.type}
+    dpt_adaptor: ${model.pred_head.adaptor_config.dense_pred_init_dict}
+    pose_adaptor: ${model.pred_head.adaptor_config.pose_pred_init_dict}
+    scale_adaptor: ${model.pred_head.adaptor_config.scale_pred_init_dict}
+    gradient_checkpointing: false
+  task:
+    ray_dirs_encoder_config:
+      name: ray_dirs_encoder
+      in_chans: 3
+      encoder_str: dense_rep_encoder
+      apply_pe: false
+    depth_encoder_config:
+      name: depth_encoder
+      in_chans: 1
+      encoder_str: dense_rep_encoder
+      apply_pe: false
+    cam_rot_encoder_config:
+      name: cam_rot_quats_encoder
+      in_chans: 4
+      encoder_str: global_rep_encoder
+    cam_trans_encoder_config:
+      name: cam_trans_encoder
+      in_chans: 3
+      encoder_str: global_rep_encoder
+    scale_encoder_config:
+      name: scale_encoder
+      in_chans: 1
+      encoder_str: global_rep_encoder
+    overall_prob: 0.0
+    dropout_prob: 0.05
+    ray_dirs_prob: 0.5
+    depth_prob: 0.5
+    cam_prob: 0.5
+    sparse_depth_prob: 0
+    sparsification_removal_percent: 0.9
+    depth_scale_norm_all_prob: 0.05
+    pose_scale_norm_all_prob: 0.05
+    depth_random_mask_prob: 0.5
+    depth_random_mask_scale:
+    - 0.3
+    - 0.7
+    rgb_dropout_prob: 0.0
+    rgb_random_mask_prob: 0.0
+    rgb_random_mask_scale:
+    - 0.1
+    - 0.2
+dataset:
+  resolution_options:
+    518_many_ar: '[(518, 518), (518, 392), (518, 336), (518, 294), (518, 252), (518,
+      168), (392, 518), (336, 518), (294, 518), (252, 518)]'
+    518_many_landscape_ar: '[(518, 518), (518, 392), (518, 336), (518, 294), (518,
+      252), (518, 168)]'
+    518_many_non_square_landscape_ar: '[(518, 392), (518, 336), (518, 294), (518,
+      252), (518, 168)]'
+    518_0_50_ar: (252, 518)
+    518_0_56_ar: (294, 518)
+    518_0_66_ar: (336, 518)
+    518_0_75_ar: (392, 518)
+    518_1_00_ar: (518, 518)
+    518_1_33_ar: (518, 392)
+    518_1_52_ar: (518, 336)
+    518_1_77_ar: (518, 294)
+    518_2_00_ar: (518, 252)
+    518_3_20_ar: (518, 168)
+    512_many_ar: '[(512, 512), (512, 384), (512, 336), (512, 288), (512, 256), (512,
+      160), (384, 512), (336, 512), (288, 512), (256, 512)]'
+    512_many_landscape_ar: '[(512, 512), (512, 384), (512, 336), (512, 288), (512,
+      256), (512, 160)]'
+    512_many_non_square_landscape_ar: '[(512, 384), (512, 336), (512, 288), (512,
+      256), (512, 160)]'
+    512_0_50_ar: (256, 512)
+    512_0_56_ar: (288, 512)
+    512_0_66_ar: (336, 512)
+    512_0_75_ar: (384, 512)
+    512_1_00_ar: (512, 512)
+    512_1_33_ar: (512, 384)
+    512_1_52_ar: (512, 336)
+    512_1_77_ar: (512, 288)
+    512_2_00_ar: (512, 256)
+    512_3_20_ar: (512, 160)
+    504_many_ar: '[(504, 504), (504, 378), (504, 322), (504, 280), (504, 238), (504,
+      154), (378, 504), (322, 504), (280, 504), (238, 504)]'
+    504_many_landscape_ar: '[(504, 504), (504, 378), (504, 322), (504, 280), (504,
+      238), (504, 154)]'
+    504_many_non_square_landscape_ar: '[(504, 378), (504, 322), (504, 280), (504,
+      238), (504, 154)]'
+    504_0_50_ar: (238, 504)
+    504_0_56_ar: (280, 504)
+    504_0_66_ar: (322, 504)
+    504_0_75_ar: (378, 504)
+    504_1_00_ar: (504, 504)
+    504_1_33_ar: (504, 378)
+    504_1_52_ar: (504, 322)
+    504_1_77_ar: (504, 280)
+    504_2_00_ar: (504, 238)
+    504_3_20_ar: (504, 154)
+    448_many_ar: '[(448, 448), (448, 336), (448, 294), (448, 252), (448, 224), (448,
+      140), (336, 448), (294, 448), (252, 448), (224, 448)]'
+    448_many_landscape_ar: '[(448, 448), (448, 336), (448, 294), (448, 252), (448,
+      224), (448, 140)]'
+    448_many_non_square_landscape_ar: '[(448, 336), (448, 294), (448, 252), (448,
+      224), (448, 140)]'
+    448_0_50_ar: (224, 448)
+    448_0_56_ar: (252, 448)
+    448_0_66_ar: (294, 448)
+    448_0_75_ar: (336, 448)
+    448_1_00_ar: (448, 448)
+    448_1_33_ar: (448, 336)
+    448_1_52_ar: (448, 294)
+    448_1_77_ar: (448, 252)
+    448_2_00_ar: (448, 224)
+    448_3_20_ar: (448, 140)
+    224_many_ar_14ps: '[(224, 224), (224, 168), (224, 154), (224, 126), (224, 112),
+      (224, 70), (168, 224), (154, 224), (126, 224), (112, 224)]'
+    224_many_landscape_ar_14ps: '[(224, 224), (224, 168), (224, 154), (224, 126),
+      (224, 112), (224, 70)]'
+    224_many_non_square_landscape_ar_14ps: '[(224, 168), (224, 154), (224, 126), (224,
+      112), (224, 70)]'
+    224_0_50_ar_14ps: (112, 224)
+    224_0_56_ar_14ps: (126, 224)
+    224_0_66_ar_14ps: (154, 224)
+    224_0_75_ar_14ps: (168, 224)
+    224_1_00_ar: (224, 224)
+    224_1_33_ar_14ps: (224, 168)
+    224_1_52_ar_14ps: (224, 154)
+    224_1_77_ar_14ps: (224, 126)
+    224_2_00_ar_14ps: (224, 112)
+    224_3_20_ar_14ps: (224, 70)
+    224_many_ar_16ps: '[(224, 224), (224, 176), (224, 160), (224, 128), (224, 112),
+      (224, 80), (176, 224), (160, 224), (128, 224), (112, 224)]'
+    224_many_landscape_ar_16ps: '[(224, 224), (224, 176), (224, 160), (224, 128),
+      (224, 112), (224, 80)]'
+    224_many_non_square_landscape_ar_16ps: '[(224, 176), (224, 160), (224, 128), (224,
+      112), (224, 80)]'
+    224_0_50_ar_16ps: (112, 224)
+    224_0_56_ar_16ps: (128, 224)
+    224_0_66_ar_16ps: (160, 224)
+    224_0_75_ar_16ps: (176, 224)
+    224_1_33_ar_16ps: (224, 176)
+    224_1_52_ar_16ps: (224, 160)
+    224_1_77_ar_16ps: (224, 128)
+    224_2_00_ar_16ps: (224, 112)
+    224_3_20_ar_16ps: (224, 80)
+  ase_wai:
+    train:
+      dataset_str: ASEWAI( split='${dataset.ase_wai.train.split}', resolution=${dataset.ase_wai.train.dataset_resolution},
+        principal_point_centered=${dataset.ase_wai.train.principal_point_centered},
+        aug_crop=${dataset.ase_wai.train.aug_crop}, transform='${dataset.ase_wai.train.transform}',
+        data_norm_type='${dataset.ase_wai.train.data_norm_type}', ROOT='${dataset.ase_wai.train.ROOT}',
+        dataset_metadata_dir='${dataset.ase_wai.train.dataset_metadata_dir}', overfit_num_sets=${dataset.ase_wai.train.overfit_num_sets},
+        variable_num_views=${dataset.ase_wai.train.variable_num_views}, num_views=${dataset.ase_wai.train.num_views},
+        covisibility_thres=${dataset.ase_wai.train.covisibility_thres})
+      split: train
+      dataset_resolution: ${dataset.resolution_train}
+      principal_point_centered: ${dataset.principal_point_centered}
+      aug_crop: 16
+      transform: colorjitter+grayscale+gaublur
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/ase
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.train.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+    val:
+      dataset_str: ASEWAI( split='${dataset.ase_wai.val.split}', resolution=${dataset.ase_wai.val.dataset_resolution},
+        principal_point_centered=${dataset.ase_wai.val.principal_point_centered},
+        seed=${dataset.ase_wai.val.seed}, transform='${dataset.ase_wai.val.transform}',
+        data_norm_type='${dataset.ase_wai.val.data_norm_type}', ROOT='${dataset.ase_wai.val.ROOT}',
+        dataset_metadata_dir='${dataset.ase_wai.val.dataset_metadata_dir}', overfit_num_sets=${dataset.ase_wai.val.overfit_num_sets},
+        variable_num_views=${dataset.ase_wai.val.variable_num_views}, num_views=${dataset.ase_wai.val.num_views},
+        covisibility_thres=${dataset.ase_wai.val.covisibility_thres})
+      split: val
+      dataset_resolution: ${dataset.resolution_val_ase}
+      principal_point_centered: ${dataset.principal_point_centered}
+      seed: 777
+      transform: imgnorm
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/ase
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.val.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+  blendedmvs_wai:
+    train:
+      dataset_str: BlendedMVSWAI( split='${dataset.blendedmvs_wai.train.split}', resolution=${dataset.blendedmvs_wai.train.dataset_resolution},
+        principal_point_centered=${dataset.blendedmvs_wai.train.principal_point_centered},
+        aug_crop=${dataset.blendedmvs_wai.train.aug_crop}, transform='${dataset.blendedmvs_wai.train.transform}',
+        data_norm_type='${dataset.blendedmvs_wai.train.data_norm_type}', ROOT='${dataset.blendedmvs_wai.train.ROOT}',
+        dataset_metadata_dir='${dataset.blendedmvs_wai.train.dataset_metadata_dir}',
+        overfit_num_sets=${dataset.blendedmvs_wai.train.overfit_num_sets}, variable_num_views=${dataset.blendedmvs_wai.train.variable_num_views},
+        num_views=${dataset.blendedmvs_wai.train.num_views}, covisibility_thres=${dataset.blendedmvs_wai.train.covisibility_thres})
+      split: train
+      dataset_resolution: ${dataset.resolution_train}
+      principal_point_centered: ${dataset.principal_point_centered}
+      aug_crop: 16
+      transform: colorjitter+grayscale+gaublur
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/blendedmvs
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.train.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+    val:
+      dataset_str: BlendedMVSWAI( split='${dataset.blendedmvs_wai.val.split}', resolution=${dataset.blendedmvs_wai.val.dataset_resolution},
+        principal_point_centered=${dataset.blendedmvs_wai.val.principal_point_centered},
+        seed=${dataset.blendedmvs_wai.val.seed}, transform='${dataset.blendedmvs_wai.val.transform}',
+        data_norm_type='${dataset.blendedmvs_wai.val.data_norm_type}', ROOT='${dataset.blendedmvs_wai.val.ROOT}',
+        dataset_metadata_dir='${dataset.blendedmvs_wai.val.dataset_metadata_dir}',
+        overfit_num_sets=${dataset.blendedmvs_wai.val.overfit_num_sets}, variable_num_views=${dataset.blendedmvs_wai.val.variable_num_views},
+        num_views=${dataset.blendedmvs_wai.val.num_views}, covisibility_thres=${dataset.blendedmvs_wai.val.covisibility_thres})
+      split: val
+      dataset_resolution: ${dataset.resolution_val_blendedmvs}
+      principal_point_centered: ${dataset.principal_point_centered}
+      seed: 777
+      transform: imgnorm
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/blendedmvs
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.val.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+  dl3dv_wai:
+    train:
+      dataset_str: DL3DVWAI( split='${dataset.dl3dv_wai.train.split}', resolution=${dataset.dl3dv_wai.train.dataset_resolution},
+        principal_point_centered=${dataset.dl3dv_wai.train.principal_point_centered},
+        aug_crop=${dataset.dl3dv_wai.train.aug_crop}, transform='${dataset.dl3dv_wai.train.transform}',
+        data_norm_type='${dataset.dl3dv_wai.train.data_norm_type}', ROOT='${dataset.dl3dv_wai.train.ROOT}',
+        dataset_metadata_dir='${dataset.dl3dv_wai.train.dataset_metadata_dir}', overfit_num_sets=${dataset.dl3dv_wai.train.overfit_num_sets},
+        variable_num_views=${dataset.dl3dv_wai.train.variable_num_views}, num_views=${dataset.dl3dv_wai.train.num_views},
+        covisibility_thres=${dataset.dl3dv_wai.train.covisibility_thres}, mvs_confidence_filter_thres=${dataset.dl3dv_wai.train.mvs_confidence_filter_thres})
+      split: train
+      dataset_resolution: ${dataset.resolution_train}
+      principal_point_centered: ${dataset.principal_point_centered}
+      aug_crop: 16
+      transform: colorjitter+grayscale+gaublur
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.train.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+      mvs_confidence_filter_thres: 0.25
+    val:
+      dataset_str: DL3DVWAI( split='${dataset.dl3dv_wai.val.split}', resolution=${dataset.dl3dv_wai.val.dataset_resolution},
+        principal_point_centered=${dataset.dl3dv_wai.val.principal_point_centered},
+        seed=${dataset.dl3dv_wai.val.seed}, transform='${dataset.dl3dv_wai.val.transform}',
+        data_norm_type='${dataset.dl3dv_wai.val.data_norm_type}', ROOT='${dataset.dl3dv_wai.val.ROOT}',
+        dataset_metadata_dir='${dataset.dl3dv_wai.val.dataset_metadata_dir}', overfit_num_sets=${dataset.dl3dv_wai.val.overfit_num_sets},
+        variable_num_views=${dataset.dl3dv_wai.val.variable_num_views}, num_views=${dataset.dl3dv_wai.val.num_views},
+        covisibility_thres=${dataset.dl3dv_wai.val.covisibility_thres}, mvs_confidence_filter_thres=${dataset.dl3dv_wai.val.mvs_confidence_filter_thres})
+      split: val
+      dataset_resolution: ${dataset.resolution_val_dl3dv}
+      principal_point_centered: ${dataset.principal_point_centered}
+      seed: 777
+      transform: imgnorm
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/dl3dv
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.val.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+      mvs_confidence_filter_thres: 0.25
+    test:
+      dataset_str: DL3DVWAI( split='${dataset.dl3dv_wai.test.split}', resolution=${dataset.dl3dv_wai.test.dataset_resolution},
+        principal_point_centered=${dataset.dl3dv_wai.test.principal_point_centered},
+        aug_crop=${dataset.dl3dv_wai.test.aug_crop}, transform='${dataset.dl3dv_wai.test.transform}',
+        data_norm_type='${dataset.dl3dv_wai.test.data_norm_type}', sample_specific_scene=${dataset.dl3dv_wai.test.sample_specific_scene},
+        specific_scene_name='${dataset.dl3dv_wai.test.specific_scene_name}', ROOT='${dataset.dl3dv_wai.test.ROOT}',
+        dataset_metadata_dir='${dataset.dl3dv_wai.test.dataset_metadata_dir}', overfit_num_sets=${dataset.dl3dv_wai.test.overfit_num_sets},
+        variable_num_views=${dataset.dl3dv_wai.test.variable_num_views}, num_views=${dataset.dl3dv_wai.test.num_views},
+        covisibility_thres=${dataset.dl3dv_wai.test.covisibility_thres}, mvs_confidence_filter_thres=${dataset.dl3dv_wai.test.mvs_confidence_filter_thres})
+      split: train
+      dataset_resolution: ${dataset.resolution_train}
+      principal_point_centered: ${dataset.principal_point_centered}
+      aug_crop: 16
+      transform: imgnorm
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.test.variable_num_views}
+      covisibility_thres: 0.25
+      mvs_confidence_filter_thres: 0
+      sample_specific_scene: true
+      specific_scene_name: ${specific_scene_name}
+      num_views: ${dataset.num_views}
+  dynamicreplica_wai:
+    train:
+      dataset_str: DynamicReplicaWAI( split='${dataset.dynamicreplica_wai.train.split}',
+        resolution=${dataset.dynamicreplica_wai.train.dataset_resolution}, principal_point_centered=${dataset.dynamicreplica_wai.train.principal_point_centered},
+        aug_crop=${dataset.dynamicreplica_wai.train.aug_crop}, transform='${dataset.dynamicreplica_wai.train.transform}',
+        data_norm_type='${dataset.dynamicreplica_wai.train.data_norm_type}', ROOT='${dataset.dynamicreplica_wai.train.ROOT}',
+        dataset_metadata_dir='${dataset.dynamicreplica_wai.train.dataset_metadata_dir}',
+        overfit_num_sets=${dataset.dynamicreplica_wai.train.overfit_num_sets}, variable_num_views=${dataset.dynamicreplica_wai.train.variable_num_views},
+        num_views=${dataset.dynamicreplica_wai.train.num_views}, covisibility_thres=${dataset.dynamicreplica_wai.train.covisibility_thres})
+      split: train
+      dataset_resolution: ${dataset.resolution_train}
+      principal_point_centered: ${dataset.principal_point_centered}
+      aug_crop: 16
+      transform: colorjitter+grayscale+gaublur
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/dynamicreplica
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.train.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+    val:
+      dataset_str: DynamicReplicaWAI( split='${dataset.dynamicreplica_wai.val.split}',
+        resolution=${dataset.dynamicreplica_wai.val.dataset_resolution}, principal_point_centered=${dataset.dynamicreplica_wai.val.principal_point_centered},
+        seed=${dataset.dynamicreplica_wai.val.seed}, transform='${dataset.dynamicreplica_wai.val.transform}',
+        data_norm_type='${dataset.dynamicreplica_wai.val.data_norm_type}', ROOT='${dataset.dynamicreplica_wai.val.ROOT}',
+        dataset_metadata_dir='${dataset.dynamicreplica_wai.val.dataset_metadata_dir}',
+        overfit_num_sets=${dataset.dynamicreplica_wai.val.overfit_num_sets}, variable_num_views=${dataset.dynamicreplica_wai.val.variable_num_views},
+        num_views=${dataset.dynamicreplica_wai.val.num_views}, covisibility_thres=${dataset.dynamicreplica_wai.val.covisibility_thres})
+      split: val
+      dataset_resolution: ${dataset.resolution_val_dynamicreplica}
+      principal_point_centered: ${dataset.principal_point_centered}
+      seed: 777
+      transform: imgnorm
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/dynamicreplica
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.val.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+  eth3d_wai:
+    test:
+      dataset_str: ETH3DWAI( resolution=${dataset.eth3d_wai.test.dataset_resolution},
+        principal_point_centered=${dataset.eth3d_wai.test.principal_point_centered},
+        seed=${dataset.eth3d_wai.test.seed}, transform='${dataset.eth3d_wai.test.transform}',
+        data_norm_type='${dataset.eth3d_wai.test.data_norm_type}', ROOT='${dataset.eth3d_wai.test.ROOT}',
+        dataset_metadata_dir='${dataset.eth3d_wai.test.dataset_metadata_dir}', variable_num_views=${dataset.eth3d_wai.test.variable_num_views},
+        num_views=${dataset.eth3d_wai.test.num_views}, covisibility_thres=${dataset.eth3d_wai.test.covisibility_thres})
+      dataset_resolution: ${dataset.resolution_test_eth3d}
+      principal_point_centered: ${dataset.principal_point_centered}
+      seed: 777
+      transform: imgnorm
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/eth3d
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      variable_num_views: ${dataset.test.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.025
+    one_sample_test:
+      dataset_str: ETH3DWAI( resolution=${dataset.eth3d_wai.one_sample_test.dataset_resolution},
+        principal_point_centered=${dataset.eth3d_wai.one_sample_test.principal_point_centered},
+        seed=${dataset.eth3d_wai.one_sample_test.seed}, transform='${dataset.eth3d_wai.one_sample_test.transform}',
+        data_norm_type='${dataset.eth3d_wai.one_sample_test.data_norm_type}', ROOT='${dataset.eth3d_wai.one_sample_test.ROOT}',
+        dataset_metadata_dir='${dataset.eth3d_wai.one_sample_test.dataset_metadata_dir}',
+        variable_num_views=${dataset.eth3d_wai.one_sample_test.variable_num_views},
+        num_views=${dataset.eth3d_wai.one_sample_test.num_views}, covisibility_thres=${dataset.eth3d_wai.one_sample_test.covisibility_thres},
+        sample_specific_scene=${dataset.eth3d_wai.one_sample_test.sample_specific_scene},
+        specific_scene_name='${dataset.eth3d_wai.one_sample_test.specific_scene_name}')
+      dataset_resolution: ${dataset.resolution_one_sample_test_eth3d}
+      principal_point_centered: ${dataset.principal_point_centered}
+      seed: 777
+      transform: imgnorm
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/eth3d_WAI
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      variable_num_views: ${dataset.test.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.025
+      sample_specific_scene: true
+      specific_scene_name: ${specific_scene_name}
+  megadepth_wai:
+    train:
+      dataset_str: MegaDepthWAI( split='${dataset.megadepth_wai.train.split}', resolution=${dataset.megadepth_wai.train.dataset_resolution},
+        principal_point_centered=${dataset.megadepth_wai.train.principal_point_centered},
+        aug_crop=${dataset.megadepth_wai.train.aug_crop}, transform='${dataset.megadepth_wai.train.transform}',
+        data_norm_type='${dataset.megadepth_wai.train.data_norm_type}', ROOT='${dataset.megadepth_wai.train.ROOT}',
+        dataset_metadata_dir='${dataset.megadepth_wai.train.dataset_metadata_dir}',
+        overfit_num_sets=${dataset.megadepth_wai.train.overfit_num_sets}, variable_num_views=${dataset.megadepth_wai.train.variable_num_views},
+        num_views=${dataset.megadepth_wai.train.num_views}, covisibility_thres=${dataset.megadepth_wai.train.covisibility_thres})
+      split: train
+      dataset_resolution: ${dataset.resolution_train}
+      principal_point_centered: ${dataset.principal_point_centered}
+      aug_crop: 16
+      transform: colorjitter+grayscale+gaublur
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/megadepth
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.train.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+    val:
+      dataset_str: MegaDepthWAI( split='${dataset.megadepth_wai.val.split}', resolution=${dataset.megadepth_wai.val.dataset_resolution},
+        principal_point_centered=${dataset.megadepth_wai.val.principal_point_centered},
+        seed=${dataset.megadepth_wai.val.seed}, transform='${dataset.megadepth_wai.val.transform}',
+        data_norm_type='${dataset.megadepth_wai.val.data_norm_type}', ROOT='${dataset.megadepth_wai.val.ROOT}',
+        dataset_metadata_dir='${dataset.megadepth_wai.val.dataset_metadata_dir}',
+        overfit_num_sets=${dataset.megadepth_wai.val.overfit_num_sets}, variable_num_views=${dataset.megadepth_wai.val.variable_num_views},
+        num_views=${dataset.megadepth_wai.val.num_views}, covisibility_thres=${dataset.megadepth_wai.val.covisibility_thres})
+      split: val
+      dataset_resolution: ${dataset.resolution_val_megadepth}
+      principal_point_centered: ${dataset.principal_point_centered}
+      seed: 777
+      transform: imgnorm
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/megadepth
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.val.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+  mpsd_wai:
+    train:
+      dataset_str: MPSDWAI( split='${dataset.mpsd_wai.train.split}', resolution=${dataset.mpsd_wai.train.dataset_resolution},
+        principal_point_centered=${dataset.mpsd_wai.train.principal_point_centered},
+        aug_crop=${dataset.mpsd_wai.train.aug_crop}, transform='${dataset.mpsd_wai.train.transform}',
+        data_norm_type='${dataset.mpsd_wai.train.data_norm_type}', ROOT='${dataset.mpsd_wai.train.ROOT}',
+        dataset_metadata_dir='${dataset.mpsd_wai.train.dataset_metadata_dir}', overfit_num_sets=${dataset.mpsd_wai.train.overfit_num_sets},
+        variable_num_views=${dataset.mpsd_wai.train.variable_num_views}, num_views=${dataset.mpsd_wai.train.num_views},
+        covisibility_thres=${dataset.mpsd_wai.train.covisibility_thres})
+      split: train
+      dataset_resolution: ${dataset.resolution_train}
+      principal_point_centered: ${dataset.principal_point_centered}
+      aug_crop: 16
+      transform: colorjitter+grayscale+gaublur
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/mpsd
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.train.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.15
+    val:
+      dataset_str: MPSDWAI( split='${dataset.mpsd_wai.val.split}', resolution=${dataset.mpsd_wai.val.dataset_resolution},
+        principal_point_centered=${dataset.mpsd_wai.val.principal_point_centered},
+        seed=${dataset.mpsd_wai.val.seed}, transform='${dataset.mpsd_wai.val.transform}',
+        data_norm_type='${dataset.mpsd_wai.val.data_norm_type}', ROOT='${dataset.mpsd_wai.val.ROOT}',
+        dataset_metadata_dir='${dataset.mpsd_wai.val.dataset_metadata_dir}', overfit_num_sets=${dataset.mpsd_wai.val.overfit_num_sets},
+        variable_num_views=${dataset.mpsd_wai.val.variable_num_views}, num_views=${dataset.mpsd_wai.val.num_views},
+        covisibility_thres=${dataset.mpsd_wai.val.covisibility_thres})
+      split: val
+      dataset_resolution: ${dataset.resolution_val_mpsd}
+      principal_point_centered: ${dataset.principal_point_centered}
+      seed: 777
+      transform: imgnorm
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/mpsd
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.val.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.15
+  mvs_synth_wai:
+    train:
+      dataset_str: MVSSynthWAI( split='${dataset.mvs_synth_wai.train.split}', resolution=${dataset.mvs_synth_wai.train.dataset_resolution},
+        principal_point_centered=${dataset.mvs_synth_wai.train.principal_point_centered},
+        aug_crop=${dataset.mvs_synth_wai.train.aug_crop}, transform='${dataset.mvs_synth_wai.train.transform}',
+        data_norm_type='${dataset.mvs_synth_wai.train.data_norm_type}', ROOT='${dataset.mvs_synth_wai.train.ROOT}',
+        dataset_metadata_dir='${dataset.mvs_synth_wai.train.dataset_metadata_dir}',
+        overfit_num_sets=${dataset.mvs_synth_wai.train.overfit_num_sets}, variable_num_views=${dataset.mvs_synth_wai.train.variable_num_views},
+        num_views=${dataset.mvs_synth_wai.train.num_views}, covisibility_thres=${dataset.mvs_synth_wai.train.covisibility_thres})
+      split: train
+      dataset_resolution: ${dataset.resolution_train}
+      principal_point_centered: ${dataset.principal_point_centered}
+      aug_crop: 16
+      transform: colorjitter+grayscale+gaublur
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/mvs_synth
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.train.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+    val:
+      dataset_str: MVSSynthWAI( split='${dataset.mvs_synth_wai.val.split}', resolution=${dataset.mvs_synth_wai.val.dataset_resolution},
+        principal_point_centered=${dataset.mvs_synth_wai.val.principal_point_centered},
+        seed=${dataset.mvs_synth_wai.val.seed}, transform='${dataset.mvs_synth_wai.val.transform}',
+        data_norm_type='${dataset.mvs_synth_wai.val.data_norm_type}', ROOT='${dataset.mvs_synth_wai.val.ROOT}',
+        dataset_metadata_dir='${dataset.mvs_synth_wai.val.dataset_metadata_dir}',
+        overfit_num_sets=${dataset.mvs_synth_wai.val.overfit_num_sets}, variable_num_views=${dataset.mvs_synth_wai.val.variable_num_views},
+        num_views=${dataset.mvs_synth_wai.val.num_views}, covisibility_thres=${dataset.mvs_synth_wai.val.covisibility_thres})
+      split: val
+      dataset_resolution: ${dataset.resolution_val_mvs_synth}
+      principal_point_centered: ${dataset.principal_point_centered}
+      seed: 777
+      transform: imgnorm
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/mvs_synth
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.val.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+  paralleldomain4d_wai:
+    train:
+      dataset_str: ParallelDomain4DWAI( split='${dataset.paralleldomain4d_wai.train.split}',
+        resolution=${dataset.paralleldomain4d_wai.train.dataset_resolution}, principal_point_centered=${dataset.paralleldomain4d_wai.train.principal_point_centered},
+        aug_crop=${dataset.paralleldomain4d_wai.train.aug_crop}, transform='${dataset.paralleldomain4d_wai.train.transform}',
+        data_norm_type='${dataset.paralleldomain4d_wai.train.data_norm_type}', ROOT='${dataset.paralleldomain4d_wai.train.ROOT}',
+        dataset_metadata_dir='${dataset.paralleldomain4d_wai.train.dataset_metadata_dir}',
+        overfit_num_sets=${dataset.paralleldomain4d_wai.train.overfit_num_sets}, variable_num_views=${dataset.paralleldomain4d_wai.train.variable_num_views},
+        num_views=${dataset.paralleldomain4d_wai.train.num_views}, covisibility_thres=${dataset.paralleldomain4d_wai.train.covisibility_thres})
+      split: train
+      dataset_resolution: ${dataset.resolution_train}
+      principal_point_centered: ${dataset.principal_point_centered}
+      aug_crop: 16
+      transform: colorjitter+grayscale+gaublur
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/paralleldomain4d
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.train.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+    val:
+      dataset_str: ParallelDomain4DWAI( split='${dataset.paralleldomain4d_wai.val.split}',
+        resolution=${dataset.paralleldomain4d_wai.val.dataset_resolution}, principal_point_centered=${dataset.paralleldomain4d_wai.val.principal_point_centered},
+        seed=${dataset.paralleldomain4d_wai.val.seed}, transform='${dataset.paralleldomain4d_wai.val.transform}',
+        data_norm_type='${dataset.paralleldomain4d_wai.val.data_norm_type}', ROOT='${dataset.paralleldomain4d_wai.val.ROOT}',
+        dataset_metadata_dir='${dataset.paralleldomain4d_wai.val.dataset_metadata_dir}',
+        overfit_num_sets=${dataset.paralleldomain4d_wai.val.overfit_num_sets}, variable_num_views=${dataset.paralleldomain4d_wai.val.variable_num_views},
+        num_views=${dataset.paralleldomain4d_wai.val.num_views}, covisibility_thres=${dataset.paralleldomain4d_wai.val.covisibility_thres})
+      split: val
+      dataset_resolution: ${dataset.resolution_val_paralleldomain4d}
+      principal_point_centered: ${dataset.principal_point_centered}
+      seed: 777
+      transform: imgnorm
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/paralleldomain4d
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.val.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+  sailvos3d_wai:
+    train:
+      dataset_str: SAILVOS3DWAI( split='${dataset.sailvos3d_wai.train.split}', resolution=${dataset.sailvos3d_wai.train.dataset_resolution},
+        principal_point_centered=${dataset.sailvos3d_wai.train.principal_point_centered},
+        aug_crop=${dataset.sailvos3d_wai.train.aug_crop}, transform='${dataset.sailvos3d_wai.train.transform}',
+        data_norm_type='${dataset.sailvos3d_wai.train.data_norm_type}', ROOT='${dataset.sailvos3d_wai.train.ROOT}',
+        dataset_metadata_dir='${dataset.sailvos3d_wai.train.dataset_metadata_dir}',
+        overfit_num_sets=${dataset.sailvos3d_wai.train.overfit_num_sets}, variable_num_views=${dataset.sailvos3d_wai.train.variable_num_views},
+        num_views=${dataset.sailvos3d_wai.train.num_views}, covisibility_thres=${dataset.sailvos3d_wai.train.covisibility_thres})
+      split: train
+      dataset_resolution: ${dataset.resolution_train}
+      principal_point_centered: ${dataset.principal_point_centered}
+      aug_crop: 16
+      transform: colorjitter+grayscale+gaublur
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/sailvos3d
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.train.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+    val:
+      dataset_str: SAILVOS3DWAI( split='${dataset.sailvos3d_wai.val.split}', resolution=${dataset.sailvos3d_wai.val.dataset_resolution},
+        principal_point_centered=${dataset.sailvos3d_wai.val.principal_point_centered},
+        seed=${dataset.sailvos3d_wai.val.seed}, transform='${dataset.sailvos3d_wai.val.transform}',
+        data_norm_type='${dataset.sailvos3d_wai.val.data_norm_type}', ROOT='${dataset.sailvos3d_wai.val.ROOT}',
+        dataset_metadata_dir='${dataset.sailvos3d_wai.val.dataset_metadata_dir}',
+        overfit_num_sets=${dataset.sailvos3d_wai.val.overfit_num_sets}, variable_num_views=${dataset.sailvos3d_wai.val.variable_num_views},
+        num_views=${dataset.sailvos3d_wai.val.num_views}, covisibility_thres=${dataset.sailvos3d_wai.val.covisibility_thres})
+      split: val
+      dataset_resolution: ${dataset.resolution_val_sailvos3d}
+      principal_point_centered: ${dataset.principal_point_centered}
+      seed: 777
+      transform: imgnorm
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/sailvos3d
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.val.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+  scannetpp_wai:
+    train:
+      dataset_str: ScanNetPPWAI( split='${dataset.scannetpp_wai.train.split}', resolution=${dataset.scannetpp_wai.train.dataset_resolution},
+        principal_point_centered=${dataset.scannetpp_wai.train.principal_point_centered},
+        aug_crop=${dataset.scannetpp_wai.train.aug_crop}, transform='${dataset.scannetpp_wai.train.transform}',
+        data_norm_type='${dataset.scannetpp_wai.train.data_norm_type}', ROOT='${dataset.scannetpp_wai.train.ROOT}',
+        dataset_metadata_dir='${dataset.scannetpp_wai.train.dataset_metadata_dir}',
+        overfit_num_sets=${dataset.scannetpp_wai.train.overfit_num_sets}, variable_num_views=${dataset.scannetpp_wai.train.variable_num_views},
+        num_views=${dataset.scannetpp_wai.train.num_views}, covisibility_thres=${dataset.scannetpp_wai.train.covisibility_thres})
+      split: train
+      dataset_resolution: ${dataset.resolution_train}
+      principal_point_centered: ${dataset.principal_point_centered}
+      aug_crop: 16
+      transform: colorjitter+grayscale+gaublur
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/scannetppv2
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.train.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+    val:
+      dataset_str: ScanNetPPWAI( split='${dataset.scannetpp_wai.val.split}', resolution=${dataset.scannetpp_wai.val.dataset_resolution},
+        principal_point_centered=${dataset.scannetpp_wai.val.principal_point_centered},
+        seed=${dataset.scannetpp_wai.val.seed}, transform='${dataset.scannetpp_wai.val.transform}',
+        data_norm_type='${dataset.scannetpp_wai.val.data_norm_type}', ROOT='${dataset.scannetpp_wai.val.ROOT}',
+        dataset_metadata_dir='${dataset.scannetpp_wai.val.dataset_metadata_dir}',
+        overfit_num_sets=${dataset.scannetpp_wai.val.overfit_num_sets}, variable_num_views=${dataset.scannetpp_wai.val.variable_num_views},
+        num_views=${dataset.scannetpp_wai.val.num_views}, covisibility_thres=${dataset.scannetpp_wai.val.covisibility_thres})
+      split: val
+      dataset_resolution: ${dataset.resolution_val_scannetpp}
+      principal_point_centered: ${dataset.principal_point_centered}
+      seed: 777
+      transform: imgnorm
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/scannetppv2
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.val.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+    test:
+      dataset_str: ScanNetPPWAI( split='${dataset.scannetpp_wai.test.split}', resolution=${dataset.scannetpp_wai.test.dataset_resolution},
+        principal_point_centered=${dataset.scannetpp_wai.test.principal_point_centered},
+        seed=${dataset.scannetpp_wai.test.seed}, transform='${dataset.scannetpp_wai.test.transform}',
+        data_norm_type='${dataset.scannetpp_wai.test.data_norm_type}', ROOT='${dataset.scannetpp_wai.test.ROOT}',
+        dataset_metadata_dir='${dataset.scannetpp_wai.test.dataset_metadata_dir}',
+        variable_num_views=${dataset.scannetpp_wai.test.variable_num_views}, num_views=${dataset.scannetpp_wai.test.num_views},
+        covisibility_thres=${dataset.scannetpp_wai.test.covisibility_thres})
+      split: test
+      dataset_resolution: ${dataset.resolution_test_scannetpp}
+      principal_point_centered: ${dataset.principal_point_centered}
+      seed: 777
+      transform: imgnorm
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/scannetppv2
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      variable_num_views: ${dataset.test.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+  spring_wai:
+    train:
+      dataset_str: SpringWAI( split='${dataset.spring_wai.train.split}', resolution=${dataset.spring_wai.train.dataset_resolution},
+        principal_point_centered=${dataset.spring_wai.train.principal_point_centered},
+        aug_crop=${dataset.spring_wai.train.aug_crop}, transform='${dataset.spring_wai.train.transform}',
+        data_norm_type='${dataset.spring_wai.train.data_norm_type}', ROOT='${dataset.spring_wai.train.ROOT}',
+        dataset_metadata_dir='${dataset.spring_wai.train.dataset_metadata_dir}', overfit_num_sets=${dataset.spring_wai.train.overfit_num_sets},
+        variable_num_views=${dataset.spring_wai.train.variable_num_views}, num_views=${dataset.spring_wai.train.num_views},
+        covisibility_thres=${dataset.spring_wai.train.covisibility_thres})
+      split: train
+      dataset_resolution: ${dataset.resolution_train}
+      principal_point_centered: ${dataset.principal_point_centered}
+      aug_crop: 16
+      transform: colorjitter+grayscale+gaublur
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/spring
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.train.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+    val:
+      dataset_str: SpringWAI( split='${dataset.spring_wai.val.split}', resolution=${dataset.spring_wai.val.dataset_resolution},
+        principal_point_centered=${dataset.spring_wai.val.principal_point_centered},
+        seed=${dataset.spring_wai.val.seed}, transform='${dataset.spring_wai.val.transform}',
+        data_norm_type='${dataset.spring_wai.val.data_norm_type}', ROOT='${dataset.spring_wai.val.ROOT}',
+        dataset_metadata_dir='${dataset.spring_wai.val.dataset_metadata_dir}', overfit_num_sets=${dataset.spring_wai.val.overfit_num_sets},
+        variable_num_views=${dataset.spring_wai.val.variable_num_views}, num_views=${dataset.spring_wai.val.num_views},
+        covisibility_thres=${dataset.spring_wai.val.covisibility_thres})
+      split: val
+      dataset_resolution: ${dataset.resolution_val_spring}
+      principal_point_centered: ${dataset.principal_point_centered}
+      seed: 777
+      transform: imgnorm
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/spring
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.val.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+  tav2_wb_wai:
+    train:
+      dataset_str: TartanAirV2WBWAI( split='${dataset.tav2_wb_wai.train.split}', resolution=${dataset.tav2_wb_wai.train.dataset_resolution},
+        principal_point_centered=${dataset.tav2_wb_wai.train.principal_point_centered},
+        aug_crop=${dataset.tav2_wb_wai.train.aug_crop}, transform='${dataset.tav2_wb_wai.train.transform}',
+        data_norm_type='${dataset.tav2_wb_wai.train.data_norm_type}', ROOT='${dataset.tav2_wb_wai.train.ROOT}',
+        dataset_metadata_dir='${dataset.tav2_wb_wai.train.dataset_metadata_dir}',
+        overfit_num_sets=${dataset.tav2_wb_wai.train.overfit_num_sets}, variable_num_views=${dataset.tav2_wb_wai.train.variable_num_views},
+        num_views=${dataset.tav2_wb_wai.train.num_views}, covisibility_thres=${dataset.tav2_wb_wai.train.covisibility_thres})
+      split: train
+      dataset_resolution: ${dataset.resolution_train}
+      principal_point_centered: ${dataset.principal_point_centered}
+      aug_crop: 16
+      transform: colorjitter+grayscale+gaublur
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/tav2_wb
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.train.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+    val:
+      dataset_str: TartanAirV2WBWAI( split='${dataset.tav2_wb_wai.val.split}', resolution=${dataset.tav2_wb_wai.val.dataset_resolution},
+        principal_point_centered=${dataset.tav2_wb_wai.val.principal_point_centered},
+        seed=${dataset.tav2_wb_wai.val.seed}, transform='${dataset.tav2_wb_wai.val.transform}',
+        data_norm_type='${dataset.tav2_wb_wai.val.data_norm_type}', ROOT='${dataset.tav2_wb_wai.val.ROOT}',
+        dataset_metadata_dir='${dataset.tav2_wb_wai.val.dataset_metadata_dir}', overfit_num_sets=${dataset.tav2_wb_wai.val.overfit_num_sets},
+        variable_num_views=${dataset.tav2_wb_wai.val.variable_num_views}, num_views=${dataset.tav2_wb_wai.val.num_views},
+        covisibility_thres=${dataset.tav2_wb_wai.val.covisibility_thres})
+      split: val
+      dataset_resolution: ${dataset.resolution_val_tav2_wb}
+      principal_point_centered: ${dataset.principal_point_centered}
+      seed: 777
+      transform: imgnorm
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/tav2_wb
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.val.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+    test:
+      dataset_str: TartanAirV2WBWAI( split='${dataset.tav2_wb_wai.test.split}', resolution=${dataset.tav2_wb_wai.test.dataset_resolution},
+        principal_point_centered=${dataset.tav2_wb_wai.test.principal_point_centered},
+        seed=${dataset.tav2_wb_wai.test.seed}, transform='${dataset.tav2_wb_wai.test.transform}',
+        data_norm_type='${dataset.tav2_wb_wai.test.data_norm_type}', ROOT='${dataset.tav2_wb_wai.test.ROOT}',
+        dataset_metadata_dir='${dataset.tav2_wb_wai.test.dataset_metadata_dir}', variable_num_views=${dataset.tav2_wb_wai.test.variable_num_views},
+        num_views=${dataset.tav2_wb_wai.test.num_views}, covisibility_thres=${dataset.tav2_wb_wai.test.covisibility_thres})
+      split: test
+      dataset_resolution: ${dataset.resolution_test_tav2_wb}
+      principal_point_centered: ${dataset.principal_point_centered}
+      seed: 777
+      transform: imgnorm
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/tav2_wb
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      variable_num_views: ${dataset.test.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+  unrealstereo4k_wai:
+    train:
+      dataset_str: UnrealStereo4KWAI( split='${dataset.unrealstereo4k_wai.train.split}',
+        resolution=${dataset.unrealstereo4k_wai.train.dataset_resolution}, principal_point_centered=${dataset.unrealstereo4k_wai.train.principal_point_centered},
+        aug_crop=${dataset.unrealstereo4k_wai.train.aug_crop}, transform='${dataset.unrealstereo4k_wai.train.transform}',
+        data_norm_type='${dataset.unrealstereo4k_wai.train.data_norm_type}', ROOT='${dataset.unrealstereo4k_wai.train.ROOT}',
+        dataset_metadata_dir='${dataset.unrealstereo4k_wai.train.dataset_metadata_dir}',
+        overfit_num_sets=${dataset.unrealstereo4k_wai.train.overfit_num_sets}, variable_num_views=${dataset.unrealstereo4k_wai.train.variable_num_views},
+        num_views=${dataset.unrealstereo4k_wai.train.num_views}, covisibility_thres=${dataset.unrealstereo4k_wai.train.covisibility_thres})
+      split: train
+      dataset_resolution: ${dataset.resolution_train}
+      principal_point_centered: ${dataset.principal_point_centered}
+      aug_crop: 16
+      transform: colorjitter+grayscale+gaublur
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/unrealstereo4k
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.train.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+    val:
+      dataset_str: UnrealStereo4KWAI( split='${dataset.unrealstereo4k_wai.val.split}',
+        resolution=${dataset.unrealstereo4k_wai.val.dataset_resolution}, principal_point_centered=${dataset.unrealstereo4k_wai.val.principal_point_centered},
+        seed=${dataset.unrealstereo4k_wai.val.seed}, transform='${dataset.unrealstereo4k_wai.val.transform}',
+        data_norm_type='${dataset.unrealstereo4k_wai.val.data_norm_type}', ROOT='${dataset.unrealstereo4k_wai.val.ROOT}',
+        dataset_metadata_dir='${dataset.unrealstereo4k_wai.val.dataset_metadata_dir}',
+        overfit_num_sets=${dataset.unrealstereo4k_wai.val.overfit_num_sets}, variable_num_views=${dataset.unrealstereo4k_wai.val.variable_num_views},
+        num_views=${dataset.unrealstereo4k_wai.val.num_views}, covisibility_thres=${dataset.unrealstereo4k_wai.val.covisibility_thres})
+      split: val
+      dataset_resolution: ${dataset.resolution_val_unrealstereo4k}
+      principal_point_centered: ${dataset.principal_point_centered}
+      seed: 777
+      transform: imgnorm
+      data_norm_type: ${model.data_norm_type}
+      ROOT: ${root_data_dir}/unrealstereo4k
+      dataset_metadata_dir: ${mapanything_dataset_metadata_dir}
+      overfit_num_sets: null
+      variable_num_views: ${dataset.val.variable_num_views}
+      num_views: ${dataset.num_views}
+      covisibility_thres: 0.25
+  train_dataset: + 1 @ ${dataset.eth3d_wai.one_sample_test.dataset_str}
+  test_dataset: + 1 @ ${dataset.eth3d_wai.one_sample_test.dataset_str}
+  num_workers: 0
+  resolution_train: ${dataset.resolution_options.518_many_ar}
+  resolution_val: ???
+  num_views: 4
+  principal_point_centered: false
+  train:
+    variable_num_views: true
+  val:
+    variable_num_views: false
+  test:
+    variable_num_views: false
+  variable_num_views: false
+  resolution_val_dl3dv: ${dataset.resolution_options.518_1_77_ar}
+  resolution_one_sample_test_eth3d: ${dataset.resolution_options.518_1_77_ar}
+loss:
+  train_criterion: RGBColorRegressionLoss(MSELoss())
+  test_criterion: ExcludeTopNPercentPixelLoss(FactoredGeometryScaleRegr3DPlusNormalGMLoss(RobustRegressionLoss(alpha=0.5,
+    scaling_c=0.05), norm_mode='avg_dis', depth_type_for_loss='depth_along_ray', loss_in_log=True,
+    flatten_across_image_only=True, compute_pairwise_relative_pose_loss=False, compute_world_frame_points_loss=True,
+    apply_normal_and_gm_loss_to_synthetic_data_only=True, cam_frame_points_loss_weight=0.1,
+    depth_loss_weight=0.1, ray_directions_loss_weight=0.1, pose_quats_loss_weight=0.1,
+    pose_trans_loss_weight=0.1, scale_loss_weight=0.1, world_frame_points_loss_weight=1,
+    normal_loss_weight=0.3, gm_loss_weight=0.3), top_n_percent=5, apply_to_real_data_only=True,
+    loss_set_indices=[0, 1, 2]) + 0.03 * NonAmbiguousMaskLoss(BCELoss()) + RGBColorRegressionLoss(RobustRegressionLoss(alpha=0.5,
+    scaling_c=0.05))
+train_params:
+  seed: 0
+  max_num_of_imgs_per_gpu: 4
+  accum_iter: 1
+  epochs: 200
+  lr: 0.0001
+  min_lr: 1.0e-06
+  warmup_epochs: 10
+  weight_decay: 0.05
+  schedule_type: linear_warmup_half_cycle_cosine_decay
+  warn_not_in_submodule: false
+  submodule_configs:
+    encoder:
+      lr: 1.0e-05
+      min_lr: 1.0e-07
+    cam_trans_scale_encoder:
+      lr: 0
+    cam_trans_encoder:
+      lr: 0
+    cam_rot_encoder:
+      lr: 0
+    depth_scale_encoder:
+      lr: 0
+    depth_encoder:
+      lr: 0
+    ray_dirs_encoder:
+      lr: 0
+  amp: 1
+  amp_dtype: bf16
+  disable_cudnn_benchmark: true
+  freeze_val_samples_across_all_epochs: true
+  eval_freq: 0
+  save_freq: 200
+  keep_freq: 0
+  print_freq: 5
+  resume: true
+distributed:
+  world_size: 1
+  local_rank: -1
+  dist_url: env://
+output_dir: ${hydra:run.dir}
+root_experiments_dir: /root/map-anything/experiments/
+root_uniception_pretrained_checkpoints_dir: ${machine.root_uniception_pretrained_checkpoints_dir}
+root_pretrained_checkpoints_dir: /root/map-anything/checkpoint/
+root_data_dir: /data/dataset/eth3d
+mapanything_dataset_metadata_dir: /data/dataset/mapanything_meta/
+specific_scene_name: office

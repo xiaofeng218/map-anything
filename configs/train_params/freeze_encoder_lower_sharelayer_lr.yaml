@@ -1,0 +1,40 @@
+defaults:
+  - default
+
+# Use 20x lower lr for finetuning
+lr: 1e-05
+min_lr: 1e-05 #1e-07
+
+# Optimizer parameters specific to submodules
+submodule_configs:
+  # Encoder
+  # encoder:
+  #   lr: 1e-05
+  #   min_lr: 1e-07
+  cam_trans_scale_encoder:
+    lr: 0
+  cam_trans_encoder:
+    lr: 0
+  cam_rot_encoder:
+    lr: 0
+  depth_scale_encoder:
+    lr: 0
+  depth_encoder:
+    lr: 0
+  ray_dirs_encoder:
+    lr: 0
+  # Use default lr for new paramed dense_head
+  dense_head:
+    lr: 1e-4
+    min_lr: 1e-4 #1e-06
+
+eval_freq: 0
+# Frequency (number of epochs) to save checkpoint in checkpoint-last.pth
+save_freq: 200
+# Frequency (number of epochs) to save checkpoint in checkpoint-%d.pth
+keep_freq: 0
+# Frequence (number of iterations) to print infos while training (includes tensorboard logging)
+print_freq: 5
+
+epochs: 400
+

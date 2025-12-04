@@ -1,0 +1,22 @@
+defaults:
+  - default
+
+# Number of views parameter for the multi-view datasets
+num_views: 4 # 注意修改训练代码中创建dataset中的max_view_per_gpu!
+
+num_workers: 0
+
+variable_num_views: false
+
+# Train Resolution
+resolution_train: ${dataset.resolution_options.518_many_ar}
+
+# Validation Resolution
+resolution_val_dl3dv: ${dataset.resolution_options.518_1_77_ar}
+resolution_one_sample_test_eth3d: ${dataset.resolution_options.518_1_77_ar}
+
+# Training Set —— 仅保留 dl3dv_wai
+train_dataset: "+ 1 @ ${dataset.eth3d_wai.one_sample_test.dataset_str}" #"+ 1 @ ${dataset.dl3dv_wai.test.dataset_str}"
+
+# Test Set
+test_dataset: "+ 1 @ ${dataset.eth3d_wai.one_sample_test.dataset_str}"

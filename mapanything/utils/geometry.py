@@ -2257,3 +2257,98 @@ def normals_edge(
     )
     edge = angle_diff > np.deg2rad(tol)
     return edge
+
+def calculate_in_frustum_mask(depth_1, intrinsics_1, c2w_1, mask_1, depth_2, intrinsics_2, c2w_2, mask_2):
+    """
+    A function that takes in the depth, intrinsics and c2w matrices of two sets
+    of views, and then works out which of the pixels in the first set of views
+    has a direct corresponding pixel in any of views in the second set
+
+    Args:
+        depth_1: (b, v1, h, w)
+        intrinsics_1: (b, v1, 3, 3)
+        c2w_1: (b, v1, 4, 4)
+        mask_1: (b, v2, h, w) # 表示这个地方是否会被看到
+        depth_2: (b, v2, h, w)
+        intrinsics_2: (b, v2, 3, 3)
+        c2w_2: (b, v2, 4, 4)
+        mask_2: (b, v2, h, w) # 表示这个地方是否会被看到
+
+    Returns:
+        torch.Tensor: frustum_mask in v1 space (b, v1, h, w).
+        torch.Tensor: valid_mask of frustum_mask (b, v1, h, w).
+    """
+
+    _, v1, h, w = depth_1.shape
+    _, v2, _, _ = depth_2.shape
+
+    # Unproject the depth to get the 3D points in world space
+    points_2d = [] # the uv coordinates of each point
+    render_depth = [] # the depth of each point
+    for b in range(depth_1.shape[0]):
+        points_3d, _ = depthmap_to_world_frame(depth_1[b], intrinsics_1[b], c2w_1[b])  # (v1, h, w, 3)
+
+        # Project the 3D points into the pixel space of all the second views simultaneously
+        pts_3d_expand = points_3d.unsqueeze(1).expand(-1, v2, -1, -1, -1).reshape(-1, h, w, 3)  # (v1*v2, h, w, 3)
+        w2c_2_expand = closed_form_pose_inverse(c2w_2[b]).unsqueeze(0).expand(v1, -1, -1, -1).reshape(-1, 4, 4)  # (v1*v2, 4, 4)
+        intrinsics_2_expand = intrinsics_2[b].unsqueeze(0).expand(v1, -1, -1, -1).reshape(-1, 3, 3)  # (v1*v2, 3, 3)
+        camera_points = transform_pts3d(pts_3d_expand, w2c_2_expand)  # (v1*v2, h, w, 3)
+        points_2d_per_batch = project_pts3d_to_image(camera_points, intrinsics_2_expand, return_z_dim=False)  # (v1*v2, h, w, 2)
+        points_2d_per_batch = points_2d_per_batch.reshape(v1, v2, h, w, 2)
+        camera_points = camera_points.reshape(v1, v2, h, w, 3)
+
+        points_2d.append(points_2d_per_batch)
+        render_depth.append(camera_points[..., 2])
+
+    points_2d = torch.stack(points_2d) # (b, v1, v2, h, w, 2)
+    render_depth = torch.stack(render_depth)  # (b, v1, v2, h, w)
+
+    # We use three conditions to determine if a point should be masked
+
+    # Condition 1: Check if the points are in the frustum of any of the v2 views
+    in_frustum_mask = (
+        (points_2d[..., 0] > 0) &
+        (points_2d[..., 0] < w) &
+        (points_2d[..., 1] > 0) &
+        (points_2d[..., 1] < h)
+    )  # (b, v1, v2, h, w)
+    in_frustum_mask = in_frustum_mask.any(dim=-3)  # (b, v1, h, w) 1 中的某个点可以投影到2上
+
+    # Condition 2: Check if the points have non-zero (i.e. valid) depth in the input view
+    non_zero_depth = depth_1 > 1e-6
+
+    # debug
+    #from mapanything.utils.viz import save_views_as_image
+    #save_views_as_image([mask for mask in (in_frustum_mask*non_zero_depth).permute(1,0,2,3)], "mask", "outputs/in_frustum_mask.png")
+
+    # Condition 3: Check if the points have matching depth to any of the v2
+    # views torch.nn.functional.grid_sample expects the input coordinates to
+    # be normalized to the range [-1, 1], so we normalize first
+    points_2d[..., 0] /= w
+    points_2d[..., 1] /= h
+    points_2d = points_2d * 2 - 1
+    matching_depth = torch.ones_like(render_depth, dtype=torch.bool)
+    valid_matching_depth = torch.ones_like(render_depth, dtype=torch.bool)
+    for b in range(depth_1.shape[0]):
+        for i in range(v1):
+            for j in range(v2):
+                depth = depth_2[b, j].unsqueeze(0).unsqueeze(0) # (1, 1, h, w)
+                valid_mask = mask_2[b, j].unsqueeze(0).unsqueeze(0).float() # (1, 1, h, w)
+                sampled_input = torch.cat([depth, valid_mask], dim=1) # (1, 2, h, w)
+                coords = points_2d[b, i, j].unsqueeze(0) # (1, h, w, c)
+                sampled_output = torch.nn.functional.grid_sample(sampled_input, coords, align_corners=False, mode="nearest")[0] # (2, h, w), depth+mask
+                raw_matching = torch.isclose(render_depth[b, i, j], sampled_output[0], atol=1e-1)
+                matching_depth[b, i, j] = raw_matching & sampled_output[1].bool()
+                valid_matching_depth[b, i, j] = sampled_output[1].bool() # sampled_output[0] > 1e-6
+
+
+    matching_depth = (matching_depth & valid_matching_depth).any(dim=-3)  # (..., v1, h, w)
+    valid_matching_depth = valid_matching_depth.any(dim=-3) # (..., v1, h, w)
+
+    # 这个点能反投影出去，并且可以被看到，并且不能被遮挡，证明这个点可以在其他位置被看到，也就是 non_ambiguous_mask
+    mask = (non_zero_depth & in_frustum_mask & matching_depth) | mask_1
+    # valid_mask表示这个位置的mask是“可信的”
+    # 这个点能反投影出去，并且这个点要么看不到，要么可以看到且落在了depth有效区域
+    valid_mask = (non_zero_depth & ~(in_frustum_mask & ~valid_matching_depth)) | mask_1
+
+    return mask, valid_mask

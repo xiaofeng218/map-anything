@@ -15,6 +15,10 @@ Usage:
 
 import logging
 import sys
+import os
+
+# TODO: change it when use torchrun
+sys.path.insert(0, os.getcwd())
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -23,7 +27,6 @@ from mapanything.train.training import train
 from mapanything.utils.misc import StreamToLogger
 
 log = logging.getLogger(__name__)
-
 
 @hydra.main(version_base=None, config_path="../configs", config_name="train")
 def execute_training(cfg: DictConfig):

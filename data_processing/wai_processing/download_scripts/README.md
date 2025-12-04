@@ -53,3 +53,7 @@ Use the provided python script `download_tav2_wb.py`.
 ## UnrealStereo4K
 Use the provided python script `download_unrealstereo4k.py`.
 **Source:** [UnrealStereo4K](https://github.com/fabiotosi92/SMD-Nets?tab=readme-ov-file#datasets)
+
+## co3d
+Download the official data from https://github.com/facebookresearch/co3d/tree/main
+Download the annotation files from https://huggingface.co/datasets/JianyuanWang/co3d_anno/tree/main

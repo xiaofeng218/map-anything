@@ -1,0 +1,16 @@
+# UniCeption encoder string used for selecting encoder class (python3 -m uniception.models.encoders.list)
+encoder_str: "dinov2_feature_returner"
+# Name of the encoder
+name: "dinov2_large"
+# Data normalization type
+data_norm_type: "dinov2"
+# ViT size
+size: "large"
+# intermediate layer
+indices: [7, 23]
+# Registers
+with_registers: False
+# Flag to indicate whether model class uses torch hub
+uses_torch_hub: True
+# Flag to indicate whether to use gradient checkpointing for encoder
+gradient_checkpointing: False

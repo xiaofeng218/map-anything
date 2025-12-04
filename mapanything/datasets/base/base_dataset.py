@@ -93,19 +93,20 @@ class BaseDataset(EasyDataset):
         if self.variable_num_views and self.num_views > self.num_views_min:
             self.num_views = list(range(self.num_views_min, self.num_views + 1))
 
+        To_Tensor = tvf.Compose([tvf.ToTensor()])
+
         # Initialize the image normalization type
         if data_norm_type in IMAGE_NORMALIZATION_DICT.keys():
             self.data_norm_type = data_norm_type
             image_norm = IMAGE_NORMALIZATION_DICT[data_norm_type]
-            ImgNorm = tvf.Compose(
+            self.ImgNorm = tvf.Compose(
                 [
-                    tvf.ToTensor(),
                     tvf.Normalize(mean=image_norm.mean, std=image_norm.std),
                 ]
             )
         elif data_norm_type == "identity":
             self.data_norm_type = data_norm_type
-            ImgNorm = tvf.Compose([tvf.ToTensor()])
+            self.ImgNorm = tvf.Compose([lambda x: x])
         else:
             raise ValueError(
                 f"Unknown data_norm_type: {data_norm_type}. Available options: identity or {list(IMAGE_NORMALIZATION_DICT.keys())}"
@@ -113,16 +114,16 @@ class BaseDataset(EasyDataset):
 
         # Initialize torchvision transforms
         if transform == "imgnorm":
-            self.transform = ImgNorm
+            self.transform_no_norm = To_Tensor #ImgNorm
         elif transform == "colorjitter":
-            self.transform = tvf.Compose([tvf.ColorJitter(0.5, 0.5, 0.5, 0.1), ImgNorm])
+            self.transform_no_norm = tvf.Compose([tvf.ColorJitter(0.5, 0.5, 0.5, 0.1), To_Tensor]) #ImgNorm])
         elif transform == "colorjitter+grayscale+gaublur":
-            self.transform = tvf.Compose(
+            self.transform_no_norm = tvf.Compose(
                 [
                     tvf.RandomApply([tvf.ColorJitter(0.3, 0.4, 0.2, 0.1)], p=0.75),
                     tvf.RandomGrayscale(p=0.05),
                     tvf.RandomApply([tvf.GaussianBlur(5, sigma=(0.1, 1.0))], p=0.05),
-                    ImgNorm,
+                    To_Tensor,#ImgNorm,
                 ]
             )
         else:
@@ -164,7 +165,8 @@ class BaseDataset(EasyDataset):
             {self.split=},
             {self.seed=},
             resolutions={resolutions_str},
-            {self.transform=})""".replace("self.", "")
+            {self.transform_no_norm=},
+            {self.ImgNorm=})""".replace("self.", "")
             .replace("\n", "")
             .replace("   ", "")
         )
@@ -517,7 +519,8 @@ class BaseDataset(EasyDataset):
             # Encode the image
             width, height = view["img"].size
             view["true_shape"] = np.int32((height, width))
-            view["img"] = self.transform(view["img"])
+            view["img_no_norm"] = self.transform_no_norm(view["img"])
+            view["img"] = self.ImgNorm(view["img_no_norm"])
             view["data_norm_type"] = self.data_norm_type
 
             # Compute the pointmaps, raymap and depth along ray

@@ -1,0 +1,12 @@
+original_root: # path of raw downloaded dataset
+root: # path of wai-formatted dataset
+annotation_root: /data/dataset/co3d/co3d_anno
+
+dataset_name: co3d
+version: 0.1
+overwrite: True
+
+min_num_images: 10
+
+scene_filters:
+  - process_state_not: [conversion, finished]

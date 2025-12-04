@@ -1,0 +1,16 @@
+defaults:
+  - machine: aws
+  - model: mapanything_mae_rgb
+  - dataset: one_sample_test_data
+  - loss: overall_loss_add_color
+  - train_params: freeze_encoder_lower_sharelayer_lr
+  - distributed: default
+  - _self_
+
+output_dir: ${hydra:run.dir}
+root_experiments_dir: /root/map-anything/experiments/
+root_uniception_pretrained_checkpoints_dir: ${machine.root_uniception_pretrained_checkpoints_dir}
+root_pretrained_checkpoints_dir: /root/map-anything/checkpoint/
+root_data_dir: /data/dataset/eth3d #/data/dataset/dl3dv/DL3DV_960P_1K_00_WAI/
+mapanything_dataset_metadata_dir: /data/dataset/mapanything_meta/
+specific_scene_name: office #1K_67f97041185afa2812133dde64b55790d788de8d191ba1a54c392561868190bc

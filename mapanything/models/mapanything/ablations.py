@@ -284,7 +284,7 @@ class MapAnythingAblations(nn.Module):
                 )
             # Assess if the DPT needs to use encoder features
             if len(self.info_sharing.indices) == 2:
-                self.use_encoder_features_for_dpt = True
+                self.use_encoder_features_for_decoder = True
             elif len(self.info_sharing.indices) == 3:
                 self.use_encoder_features_for_dpt = False
             else:

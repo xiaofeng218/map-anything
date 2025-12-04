@@ -1,24 +1,20 @@
-import time
+from safetensors.torch import load_file
+import torch
 
-import numpy as np
-import rerun as rr
+# 1. 加载 safetensors 文件（权重会是一个 dict）
+weights = load_file("/data/hub/models--facebook--map-anything/snapshots/6f3a25bfbb8fcc799176bb01e9d07dfb49d5416a/model.safetensors")
+# weights = torch.load("checkpoint/model.pth")
+print(weights.keys())
 
-rr.init("rerun_example_embed_web_viewer")
+delete_keys = []
+for k in weights.keys():
+    if "dense_head" in k:
+        delete_keys.append(k)
 
-positions = np.vstack([xyz.ravel() for xyz in np.mgrid[3 * [slice(-10, 10, 10j)]]]).T
-colors = (
-    np.vstack([rgb.ravel() for rgb in np.mgrid[3 * [slice(0, 255, 10j)]]])
-    .astype(np.uint8)
-    .T
-)
+for k in delete_keys:
+    del weights[k]
 
-rr.log("my_points", rr.Points3D(positions, colors=colors, radii=0.5))
+checkpoint = {"model": weights}
 
-grpc_uri = rr.serve_grpc()  # Hosts the gRPC server
-rr.serve_web_viewer(connect_to=grpc_uri)  # Hosts a web viewer
-
-try:
-    while True:
-        time.sleep(1)
-except KeyboardInterrupt:
-    print("Ctrl-C received. Exiting.")
+# 2. 保存成 PyTorch 原生格式
+torch.save(checkpoint, "checkpoint/model.pth")

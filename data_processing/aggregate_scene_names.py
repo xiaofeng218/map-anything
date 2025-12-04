@@ -501,6 +501,19 @@ class TartanAirV2Aggregator(DatasetAggregator):
         )
 
 
+class CO3DAggregator(RandomSplitAggregator):
+    """Aggregator for CO3D dataset."""
+
+    def __init__(self, root_dir, output_dir, covisibility_version_key="v0"):
+        super().__init__(
+            dataset_name="co3d",
+            root_dir=root_dir,
+            output_dir=output_dir,
+            covisibility_version_key=covisibility_version_key,
+            depth_folder="depth",
+        )
+
+
 class UnrealStereo4KAggregator(RandomSplitAggregator):
     """Aggregator for Unreal Stereo 4K dataset."""
 
@@ -559,6 +572,7 @@ def main():
             "spring",
             "tav2_wb",
             "unrealstereo4k",
+            "co3d",
         ],
         choices=[
             "ase",
@@ -575,6 +589,7 @@ def main():
             "spring",
             "tav2_wb",
             "unrealstereo4k",
+            "co3d",
         ],
     )
     parser.add_argument(
@@ -677,6 +692,12 @@ def main():
         elif dataset == "tav2_wb":
             # TartanAirV2-WB
             aggregator = TartanAirV2Aggregator(
+                root_dir=root_dir, output_dir=args.output_dir
+            )
+            aggregator.aggregate()
+        elif dataset == "co3d":
+            # CO3D
+            aggregator = CO3DAggregator(
                 root_dir=root_dir, output_dir=args.output_dir
             )
             aggregator.aggregate()

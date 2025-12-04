@@ -378,6 +378,7 @@ if __name__ == "__main__":
             )
 
     # Preload sensor calibrations
+    print(cfg.ase_calib_json_path)
     sensors_calib = device_calibration_from_json_string(
         load_data(cfg.ase_calib_json_path, load_as_string=True)
     )

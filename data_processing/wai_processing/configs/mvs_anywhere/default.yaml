@@ -17,8 +17,8 @@ frame_modalities: # what to load for each frame
 
 random_scene_processing_order: false
 
-batch_size: 2
-num_workers: 16
+batch_size: 3
+num_workers: 8
 
 
 # mvsanywhere specific parameters

@@ -19,6 +19,11 @@ import trimesh
 import viser
 import viser.transforms as viser_tf
 from tqdm.auto import tqdm
+import cv2
+import torchvision
+import torchvision.utils as vutils
+import torch
+import os
 
 from mapanything.utils.geometry import (
     depthmap_to_absolute_camera_coordinates,
@@ -116,6 +121,15 @@ def script_add_rerun_args(parser: ArgumentParser) -> None:
         nargs="?",
         const=True,
         default=True,
+        help="Connect to an external viewer",
+    )
+    parser.add_argument(
+        "--addr",
+        dest="addr",
+        type=str,
+        nargs="?",
+        const=True,
+        default="127.0.0.1:9876",
         help="Connect to an external viewer",
     )
     parser.add_argument(
@@ -647,3 +661,84 @@ def viser_wrapper(
             time.sleep(0.01)
 
     return server
+
+def save_views_as_image(
+    views: List[torch.Tensor],
+    view_type: str,
+    save_path: str,
+    normalize_type: str = "dinov2"
+):
+    """
+    Save a list of view tensors as one horizontally concatenated image using PyTorch only.
+    Supports 'dinov2' normalization for images.
+
+    Args:
+        views           : list of Tensors, each with shape:
+                          - image: (B, C, H, W) normalized
+                          - depth/mask: (B, H, W)
+        view_type       : one of ["image", "depth", "mask"]
+        save_path       : output path (.png)
+        normalize_type  : str or None
+                          - "dinov2" for DINOv2 ImageNormalization
+                          - None: no normalization assumed
+    """
+    processed = []
+
+    for v in views:
+        v = v.detach().cpu()
+
+        # ============ Auto-take batch 0 ============
+        if v.dim() >= 3:
+            v = v[0]  # (C,H,W) or (H,W)
+
+        # ============ Image ============
+        if view_type == "image":
+            if normalize_type == "dinov2":
+                # DINOv2 normalization
+                mean = torch.tensor([0.485, 0.456, 0.406]).view(-1,1,1)
+                std  = torch.tensor([0.229, 0.224, 0.225]).view(-1,1,1)
+                if v.dim() == 3:
+                    v = v * std + mean  # 反归一化
+                else:
+                    # 单通道情况也按3通道处理
+                    v = (v.unsqueeze(0) * std + mean)
+            # else:
+            #     # [-1,1] -> [0,1]
+            #     if v.min() < 0:
+            #         v = (v + 1) / 2
+
+            # 单通道扩展为3通道
+            if v.dim() == 2:
+                v = v.unsqueeze(0).repeat(3,1,1)
+            processed.append(v.clamp(0,1).float())
+
+        # ============ Mask ============
+        elif view_type == "mask":
+            if v.dim() == 2:
+                v = v.unsqueeze(0)
+            processed.append(v.float().clamp(0,1))
+
+        # ============ Depth ============
+        elif view_type == "depth":
+            depth = v.float()
+            d_min, d_max = depth.min(), depth.max()
+            if d_max > d_min:
+                depth_norm = (depth - d_min) / (d_max - d_min)
+            else:
+                depth_norm = torch.zeros_like(depth)
+
+            if depth_norm.dim() == 2:
+                depth_norm = depth_norm.unsqueeze(0)
+            processed.append(depth_norm.repeat(3,1,1).clamp(0,1))
+
+        else:
+            raise ValueError(f"Unknown view_type: {view_type}")
+
+    # ============ Horizontal concat ============
+    out = torch.cat(processed, dim=2)  # 拼接在宽度 W 方向
+
+    # Ensure out dir exists
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+    # Save using torchvision
+    vutils.save_image(out, save_path)

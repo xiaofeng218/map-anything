@@ -50,13 +50,13 @@ def main():
     os.makedirs(target, exist_ok=True)
 
     categories = [
-        "courtyard",
+        #"courtyard",
         # "delivery_area",
         # "electro",
         # "facade",
         # "kicker",
         # "meadow",
-        # "office",
+        "office",
         # "pipes",
         # "playground",
         # "relief",

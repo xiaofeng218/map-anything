@@ -1,0 +1,27 @@
+defaults:
+  - adaptor_config: raydirs_depth_rgb_pose_confidence_mask_scale
+
+type: "moge+pose"
+# moge
+feature_head:
+  num_features: 1
+  dim_out:
+    - ${model.pred_head.adaptor_config.input_dim}
+  dim_proj: 512
+  dim_upsample: [256, 128, 64]
+# mlp
+# feature_head:
+#   input_feature_dim: 1024
+#   patch_size: 14
+#   output_dim: ${model.pred_head.adaptor_config.input_dim}
+pose_head:
+  num_resconv_block: 2
+  rot_representation_dim: 4
+scale_head:
+  output_dim: 1
+adaptor_type: ${model.pred_head.adaptor_config.type}
+dpt_adaptor: ${model.pred_head.adaptor_config.dense_pred_init_dict}
+pose_adaptor: ${model.pred_head.adaptor_config.pose_pred_init_dict}
+scale_adaptor: ${model.pred_head.adaptor_config.scale_pred_init_dict}
+# Flag to indicate whether to use gradient checkpointing
+gradient_checkpointing: False

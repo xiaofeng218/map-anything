@@ -1,7 +1,7 @@
 # Random Seed
 seed: 0
 # Maximum number of images per GPU (changes based on available GPU memory)
-max_num_of_imgs_per_gpu: 48
+max_num_of_imgs_per_gpu: 4
 # Accumulate gradient iterations (for increasing the effective batch size under memory constraints)
 accum_iter: 1
 # Maximum number of epochs for the scheduler

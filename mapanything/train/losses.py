@@ -15,6 +15,9 @@ from copy import copy, deepcopy
 import einops as ein
 import torch
 import torch.nn as nn
+import lpips
+
+from torchvision.models import vgg19, VGG19_Weights
 
 from mapanything.utils.geometry import (
     angle_diff_vec3,
@@ -340,6 +343,12 @@ class L2Loss(LLoss):
     def distance(self, a, b, **kwargs):
         return torch.norm(a - b, dim=-1)
 
+class MSELoss(LLoss):
+    "MSE distance"
+
+    def distance(self, a, b, **kwargs):
+        return ((a - b) ** 2).sum(dim=-1)
+
 
 class GenericLLoss(LLoss):
     "Criterion that supports different L-norms"
@@ -447,11 +456,81 @@ class BCELoss(BaseCriterion):
             loss: scalar tensor of the BCE loss
         """
         bce_loss = torch.nn.functional.binary_cross_entropy_with_logits(
-            predicted_logits, reference_mask.float()
+            predicted_logits, reference_mask.float(), reduction=self.reduction
         )
 
         return bce_loss
 
+# TODO: add perceptual loss, 这个函数感觉目前比较可疑，不知道是否合适，关键在于如何和mask做交互，可以先不使用这个类，后续再考虑加入？
+# the perception loss code is modified from https://github.com/zhengqili/Crowdsampling-the-Plenoptic-Function/blob/f5216f312cf82d77f8d20454b5eeb3930324630a/models/networks.py#L1478
+# and some parts are based on https://github.com/arthurhero/Long-LRM/blob/main/model/loss.py
+class PerceptualLoss(BaseCriterion):
+    """
+    Perceptual loss based on pretrained VGG19 (ImageNet weights).
+    Automatically follows the device of input tensors.
+    """
+
+    def __init__(self, reduction="mean"):
+        super().__init__(reduction=reduction)
+        self.vgg = self._build_vgg()
+        self._setup_feature_blocks()
+
+    def _build_vgg(self):
+        """Build pretrained VGG19 with average pooling."""
+        model = vgg19(weights=VGG19_Weights.IMAGENET1K_V1)
+        for i, layer in enumerate(model.features):
+            if isinstance(layer, nn.MaxPool2d):
+                model.features[i] = nn.AvgPool2d(kernel_size=2, stride=2)
+        return model.eval()  # 不绑定device
+
+    def _setup_feature_blocks(self):
+        """Split pretrained VGG into feature extraction blocks."""
+        output_indices = [0, 4, 9, 14, 23, 32]
+        self.blocks = nn.ModuleList()
+        for i in range(len(output_indices) - 1):
+            blk = nn.Sequential(*list(self.vgg.features[output_indices[i]:output_indices[i + 1]]))
+            blk.eval()
+            self.blocks.append(blk)
+        for p in self.vgg.parameters():
+            p.requires_grad = False
+
+    def _extract_features(self, x):
+        """Run through feature blocks sequentially."""
+        features = []
+        for block in self.blocks:
+            x = block(x)
+            features.append(x)
+        return features
+
+    def _preprocess_images(self, images):
+        """Convert RGB [0,1] → VGG input [0,255]-mean."""
+        mean = torch.tensor([123.6800, 116.7790, 103.9390], device=images.device).view(1, 3, 1, 1)
+        return images * 255.0 - mean
+
+    def forward(self, a, b, **kwargs):
+        """Compute perceptual distance."""
+        mask = kwargs.get("mask", None)
+
+        # 根据输入的device自动迁移
+        a_p, b_p = self._preprocess_images(a), self._preprocess_images(b)
+        feat_a, feat_b = self._extract_features(a_p), self._extract_features(b_p)
+
+        # 各层感知误差
+        e0 = torch.mean(torch.abs(a_p - b_p), dim=[1, 2, 3])
+        e1 = torch.mean(torch.abs(feat_a[0] - feat_b[0]), dim=[1, 2, 3]) / 2.6
+        e2 = torch.mean(torch.abs(feat_a[1] - feat_b[1]), dim=[1, 2, 3]) / 4.8
+        e3 = torch.mean(torch.abs(feat_a[2] - feat_b[2]), dim=[1, 2, 3]) / 3.7
+        e4 = torch.mean(torch.abs(feat_a[3] - feat_b[3]), dim=[1, 2, 3]) / 5.6
+        e5 = torch.mean(torch.abs(feat_a[4] - feat_b[4]), dim=[1, 2, 3]) * 10 / 1.5
+
+        loss = (e0 + e1 + e2 + e3 + e4 + e5) / 255.0
+
+        if mask is not None:
+            if mask.shape[1:] != a.shape[2:]:
+                mask = nn.functional.interpolate(mask, size=a.shape[2:], mode='nearest')
+            loss = loss * mask.mean(dim=[1, 2, 3]) # 表示这个样本的有效程度
+
+        return loss
 
 class Criterion(nn.Module):
     """
@@ -637,7 +716,6 @@ class MultiLoss(nn.Module):
 
         return loss, details
 
-
 class NonAmbiguousMaskLoss(Criterion, MultiLoss):
     """
     Loss on non-ambiguous mask prediction logits.
@@ -645,6 +723,7 @@ class NonAmbiguousMaskLoss(Criterion, MultiLoss):
 
     def __init__(self, criterion):
         super().__init__(criterion)
+        self.criterion.reduction = "none"
 
     def compute_loss(self, batch, preds, **kw):
         """
@@ -665,12 +744,14 @@ class NonAmbiguousMaskLoss(Criterion, MultiLoss):
         for view_idx, (gt, pred) in enumerate(zip(batch, preds)):
             # Get the GT non-ambiguous masks
             gt_non_ambiguous_mask = gt["non_ambiguous_mask"]
+            gt_valid_mask = gt["valid_non_ambiguous_mask"]
 
             # Get the predicted non-ambiguous mask logits
             pred_non_ambiguous_mask_logits = pred["non_ambiguous_mask_logits"]
 
             # Compute the loss for the current view
             loss = self.criterion(pred_non_ambiguous_mask_logits, gt_non_ambiguous_mask)
+            loss = loss[gt_valid_mask].mean()
 
             # Add the loss to the list
             loss_list.append((loss, None, "non_ambiguous_mask"))
@@ -684,6 +765,156 @@ class NonAmbiguousMaskLoss(Criterion, MultiLoss):
 
         return Sum(*loss_list), (mask_loss_details | {})
 
+# TODO: add new color loss
+class RGBColorRegressionLoss(Criterion, MultiLoss):
+    """
+    Loss on non-ambiguous mask prediction logits.
+    """
+
+    def __init__(self, criterion, gm_loss_weight):
+        super().__init__(criterion)
+        self.criterion.reduction = "none"
+        self.gm_loss_weight = gm_loss_weight
+
+    def compute_loss(self, batch, preds, **kw):
+        """
+        Args:
+            batch: list of dicts with the gt data
+            preds: list of dicts with the predictions
+
+        Returns:
+            loss: Sum class of the lossses for N-views and the loss details
+        """
+        # Init loss list to keep track of individual losses for each view
+        rgb_losses = []
+        rgb_gradient_losses = []
+        valid_masks = []
+        n_views = len(batch)
+
+        # Loop over the views
+        for view_idx, (gt, pred) in enumerate(zip(batch, preds)):
+            batch_size, rgb_dim, _, _ = gt["img_no_norm"].shape
+            # Get the GT non-ambiguous masks
+            gt_non_ambiguous_mask = gt["non_ambiguous_mask"] #.reshape(batch_size, -1) #[b, -1]
+            valid_masks.append(gt_non_ambiguous_mask)
+
+            gt_img = gt['img_no_norm'].permute(0, 2, 3, 1) #.reshape(batch_size, -1, rgb_dim) #[b,-1,3]
+            pred_img = pred['img'] #.reshape(batch_size, -1, rgb_dim) #[b,-1,3]
+
+            # Compute the loss for the current view
+            loss = self.criterion(gt_img, pred_img)
+
+            gradient_loss = compute_gradient_matching_loss(gt_img, pred_img, gt_non_ambiguous_mask.clone())
+
+            rgb_losses.append(loss)
+            rgb_gradient_losses.append(gradient_loss * self.gm_loss_weight)
+
+        losses_dict = (
+            {
+                "rgb": {
+                    "values": rgb_losses,
+                    "use_mask": True,
+                    "is_multi_view": True,
+                },
+                "rgb_gradient": {
+                    "values": rgb_gradient_losses,
+                    "use_mask": False,
+                    "is_multi_view": True,
+                }
+            }
+        )
+        loss_terms, details = get_loss_terms_and_details(
+            losses_dict,
+            valid_masks,
+            type(self).__name__,
+            n_views,
+            True,
+        )
+
+        total_loss = 0.0
+        for idx, (loss, msk, rep_type) in enumerate(loss_terms):
+            if msk is not None:
+                loss_after_masking = loss[msk]
+            else:
+                loss_after_masking = loss
+            if loss_after_masking.numel() > 0:
+                loss_mean = loss_after_masking.mean()
+            else:
+                # print(f"NO VALID VALUES in loss idx {idx} (Rep Type: {rep_type}, Num Views: {n_views})", force=True)
+                loss_mean = 0.0
+            total_loss = total_loss + loss_mean
+
+        return total_loss, (details | {})
+
+class RGBColorPerceptionLoss(Criterion, MultiLoss):
+    """
+    Loss on non-ambiguous mask prediction logits.
+    """
+
+    def __init__(self, criterion):
+        super().__init__(criterion)
+        self.criterion.reduction = "none"
+
+    def compute_loss(self, batch, preds, **kw):
+        """
+        Args:
+            batch: list of dicts with the gt data
+            preds: list of dicts with the predictions
+
+        Returns:
+            loss: Sum class of the lossses for N-views and the loss details
+        """
+        # Init loss list to keep track of individual losses for each view
+        rgb_losses = []
+        valid_masks = []
+        n_views = len(batch)
+
+        # Loop over the views
+        for view_idx, (gt, pred) in enumerate(zip(batch, preds)):
+            batch_size, rgb_dim, _, _ = gt["img_no_norm"].shape
+            # Get the GT non-ambiguous masks
+            # gt_non_ambiguous_mask = gt["non_ambiguous_mask"] #.reshape(batch_size, -1) #[b, -1]
+            # valid_masks.append(gt_non_ambiguous_mask)
+
+            gt_img = gt['img_no_norm'] #.reshape(batch_size, -1, rgb_dim) #[b,3,h,w]
+            pred_img = pred['img'].permute(0, 3, 1, 2) #.reshape(batch_size, -1, rgb_dim) #[b,3,h,w]
+
+            # Compute the loss for the current view
+            loss = self.criterion(gt_img, pred_img)
+
+            rgb_losses.append(loss)
+
+        losses_dict = (
+            {
+                "rgb_perception": {
+                    "values": rgb_losses,
+                    "use_mask": False,
+                    "is_multi_view": True,
+                }
+            }
+        )
+        loss_terms, details = get_loss_terms_and_details(
+            losses_dict,
+            valid_masks,
+            type(self).__name__,
+            n_views,
+            True,
+        )
+
+        total_loss = 0.0
+        for idx, (loss, msk, rep_type) in enumerate(loss_terms):
+            if msk is not None:
+                loss_after_masking = loss[msk]
+            else:
+                loss_after_masking = loss
+            if loss_after_masking.numel() > 0:
+                loss_mean = loss_after_masking.mean()
+            else:
+                # print(f"NO VALID VALUES in loss idx {idx} (Rep Type: {rep_type}, Num Views: {n_views})", force=True)
+                loss_mean = 0.0
+            total_loss = total_loss + loss_mean
+
+        return total_loss, (details | {})
 
 class ConfLoss(MultiLoss):
     """

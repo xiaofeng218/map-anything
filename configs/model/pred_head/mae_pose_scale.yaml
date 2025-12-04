@@ -1,0 +1,19 @@
+defaults:
+  - adaptor_config: raydirs_depth_rgb_pose_confidence_mask_scale
+
+type: "mae+pose"
+feature_head:
+  num_features: 4
+  patch_size: 14
+  num_channels: ${model.pred_head.adaptor_config.input_dim}
+pose_head:
+  num_resconv_block: 2
+  rot_representation_dim: 4
+scale_head:
+  output_dim: 1
+adaptor_type: ${model.pred_head.adaptor_config.type}
+dpt_adaptor: ${model.pred_head.adaptor_config.dense_pred_init_dict}
+pose_adaptor: ${model.pred_head.adaptor_config.pose_pred_init_dict}
+scale_adaptor: ${model.pred_head.adaptor_config.scale_pred_init_dict}
+# Flag to indicate whether to use gradient checkpointing
+gradient_checkpointing: False
